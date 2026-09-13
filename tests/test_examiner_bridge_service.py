@@ -258,6 +258,23 @@ class ExaminerBridgeServiceTests(unittest.TestCase):
         )[1]["events"]
         self.assertFalse(any(item["type"] == "evaluation_finding" for item in events))
 
+    def test_provider_deadline_allows_observed_astra_latency_but_stays_bounded(self):
+        bridge = ExaminerBridgeService(
+            self.sessions,
+            examiner_agent_id="agent-saved-1",
+            examiner_factory=FakeFactory("acceptable"),
+            provider_timeout=120,
+        )
+        self.addCleanup(bridge.close)
+        self.assertEqual(bridge._provider_timeout, 120)
+        with self.assertRaises(ValueError):
+            ExaminerBridgeService(
+                self.sessions,
+                examiner_agent_id="agent-saved-1",
+                examiner_factory=FakeFactory("acceptable"),
+                provider_timeout=121,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,13 @@ sys.path.insert(0, str(ROOT.parent))
 from backend.contracts import validate_event
 PARTICIPANT_TYPES = {"doctor_action", "clinical_update", "session_state"}
 MAX_BODY = 65536
+ASSESSMENT_WELCOME = (
+    "Welcome to the DO NO HARM emergency medicine assessment. You are managing a synthetic case: "
+    "a 58-year-old man with 45 minutes of heavy central chest pain radiating to his left arm, "
+    "with sweating and nausea. He is alert, anxious and diaphoretic. Initial observations are "
+    "stable. An ECG has been requested but not acquired, and blood tests have not been collected. "
+    "What are your immediate actions?"
+)
 
 
 class BFFError(Exception):
@@ -167,10 +174,14 @@ class OpenAILive:
                 "instructions": (
                     "You are a conversational emergency-medicine professor guiding a synthetic simulation. "
                     "Ask one brief, non-leading question at a time as the doctor proceeds: clarify the working "
-                    "diagnosis, current priority, evidence, reassessment, or next step. After a meaningful completed "
-                    "statement, decision, or application-confirmed chart action, use client delegation so the Astra "
-                    "examiner can evaluate the current evidence. Never grade a partial transcript or treat speech "
-                    "as confirmed clinical execution. Use only the participant-safe response returned by the "
+                    "diagnosis, current priority, evidence, reassessment, or next step. "
+                    "Delegation policy:\nBackend tools:\n- The Astra examiner evaluates current synthetic evidence and returns participant-safe coaching.\n"
+                    "Delegate to the backend when:\n- The doctor completes a meaningful statement or decision.\n"
+                    "- An application-confirmed chart action arrives.\n- A correction changes the work already requested.\n"
+                    "Do not delegate to the backend when:\n- The transcript is partial.\n"
+                    "- You need a brief clarification to understand the doctor.\n"
+                    "Delegate before giving an answer that depends on examiner work. Do not guess while waiting. "
+                    "Never grade a partial transcript or treat speech as confirmed clinical execution. Use only the participant-safe response returned by the "
                     "application: acknowledge supported reasoning, ask for clarification when evidence is insufficient, "
                     "or announce a requested pause. Announce only application-confirmed participant-visible updates. "
                     "During pause_requested or paused, stop clinical speech; teach only after the application explicitly "
@@ -221,7 +232,7 @@ class ExaminerBridge:
         if not self.available:
             raise BFFError(503, "examiner_bridge_unavailable")
         status, result = self.client.request(self.url, method="POST", token=self.token,
-                                             body={"type": "live_delegation", "run_id": run_id, **body}, timeout=60)
+                                             body={"type": "live_delegation", "run_id": run_id, **body}, timeout=130)
         if status != 200 or not isinstance(result, dict):
             raise BFFError(status if 400 <= status < 600 else 502, "examiner_bridge_failed")
         safe = {"status": result.get("status"), "spoken_update": result.get("spoken_update"),
@@ -305,6 +316,7 @@ class DoctorHandler(BaseHTTPRequestHandler):
                 self.reply(200, {"csrf": self.server.csrf, "run_id": self.server.gateway.run_id,
                                  "live_available": self.server.live is not None,
                                  "examiner_available": self.server.bridge.available,
+                                 "assessment_welcome": ASSESSMENT_WELCOME,
                                  "retention": "session_only"})
             elif parsed.path == "/api/events":
                 query = parsed.query

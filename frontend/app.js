@@ -24,6 +24,8 @@ let microphone;
 let pollTimer;
 let liveSessionId;
 let voiceAttempt = 0;
+let assessmentWelcome;
+let welcomeSent = false;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -137,7 +139,19 @@ async function connectVoice() {
   channel = peer.createDataChannel("oai-events");
   channel.addEventListener("message", ({ data }) => {
     try {
-      if (peer === connection) Promise.resolve(controller.onLiveEvent(JSON.parse(data))).catch(() => controller.technicalPause());
+      const event = JSON.parse(data);
+      if (peer === connection) {
+        Promise.resolve(controller.onLiveEvent(event)).catch(() => controller.technicalPause());
+        if (event.type === "session.started" && !welcomeSent && assessmentWelcome) {
+          welcomeSent = true;
+          sendLive({
+            type: "session.commentary.append",
+            event_id: `assessment-welcome:${crypto.randomUUID()}`,
+            delegation_id: null,
+            content: assessmentWelcome,
+          });
+        }
+      }
     } catch { /* malformed provider events are ignored */ }
   });
   peer.addEventListener("track", (event) => { if (peer === connection) elements.audio.srcObject = event.streams[0]; });
@@ -229,10 +243,10 @@ elements.recordCorrection.addEventListener("click", async () => {
     event_id: eventId, execution_version: controller.executionVersion, action: value, kind: "speech",
   }) });
   sendLive({
-    type: "session.thinking.append",
+    type: "session.instructions.append",
     event_id: eventId,
     delegation_id: null,
-    content: "The doctor corrected the prior statement. Do not rely on it; delegate to the client for current context.",
+    content: "The doctor corrected the prior statement. Stop relying on it and delegate to the client now for current context.",
   });
   elements.correction.value = "";
 });
@@ -246,6 +260,7 @@ window.addEventListener("dnh:chart-interaction", ({ detail }) => {
 
 const bootstrap = await api("/api/bootstrap");
 csrf = bootstrap.csrf;
+assessmentWelcome = bootstrap.assessment_welcome;
 elements.detail.textContent = bootstrap.live_available ? "Voice is ready after consent." : "Provider credentials are not configured; the evidence feed remains available.";
 elements.start.disabled = true;
 poll();

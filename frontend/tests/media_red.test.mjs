@@ -39,7 +39,11 @@ async function browserHarness() {
     fetch: async (path, options = {}) => {
       calls.requests.push({ path, body: options.body && JSON.parse(options.body), audioAttached: !!elements.get("#remote-audio")?.srcObject });
       if (path.startsWith("/api/events") && failFeed) throw new Error("offline");
-      const result = path === "/api/bootstrap" ? { csrf: "test", live_available: true }
+      const result = path === "/api/bootstrap" ? {
+        csrf: "test",
+        live_available: true,
+        assessment_welcome: "Welcome to the synthetic emergency assessment.",
+      }
         : path.startsWith("/api/events") ? feed
         : path === "/api/technical-pause" ? {state: "pause_requested", execution_version: 2}
         : path === "/api/live/session" ? { session: { id: "live-test" }, transport: { sdp: "answer" } } : {};
@@ -111,9 +115,23 @@ test("accepted typed correction is appended to the active Live session", async (
 
   assert.ok(h.calls.requests.some((item) => item.path === "/api/actions" && item.body.action === "I meant review the potassium order"));
   assert.deepEqual(h.calls.liveEvents.at(-1), {
-    type: "session.thinking.append",
+    type: "session.instructions.append",
     event_id: "speech-correction:test-id",
     delegation_id: null,
-    content: "The doctor corrected the prior statement. Do not rely on it; delegate to the client for current context.",
+    content: "The doctor corrected the prior statement. Stop relying on it and delegate to the client now for current context.",
   });
+});
+
+test("assessment welcome is spoken once after Live starts and is not replayed on reconnect", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  await h.elements.get("#end").listeners.click();
+  await h.connectVoice();
+
+  assert.deepEqual(h.calls.liveEvents.filter((event) => event.type === "session.commentary.append"), [{
+    type: "session.commentary.append",
+    event_id: "assessment-welcome:test-id",
+    delegation_id: null,
+    content: "Welcome to the synthetic emergency assessment.",
+  }]);
 });
