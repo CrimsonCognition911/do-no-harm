@@ -285,6 +285,10 @@ def configure_identities(client):
         entry = {"user_uuid": user["uuid"], "role_uuid": role["uuid"], "privileges": names}
         if identity != "review":
             providers = [p for p in client.all("provider?q=" + username) if p.get("identifier") == username]
+            if len(providers) > 1 or (providers and (
+                    providers[0].get("retired") or
+                    (providers[0].get("person") or {}).get("uuid") != user["person"]["uuid"])):
+                raise ValueError(f"Provider identity drift for {username}")
             provider = providers[0] if providers else client.request("POST", "provider", {
                 "person": user["person"]["uuid"], "identifier": username})
             entry["provider_uuid"] = provider["uuid"]

@@ -13,7 +13,7 @@ const compiled = {exports: {}};
 new Function('module', 'exports', built.outputFiles[0].text)(compiled, compiled.exports);
 const {createOpenmrsAdapter} = compiled.exports;
 const runtime = path.resolve(__dirname, '../runs/openmrs');
-const manifest = JSON.parse(fs.readFileSync(path.join(runtime, 'manifest.json')));
+const manifest = JSON.parse(fs.readFileSync(process.env.DNH_MANIFEST || path.join(runtime, 'manifest.json')));
 const credentials = JSON.parse(fs.readFileSync(path.join(runtime, 'credentials.json')));
 const authorization = 'Basic ' + Buffer.from('dnh-review:' + credentials.review).toString('base64');
 const base = new URL(manifest.base_url);

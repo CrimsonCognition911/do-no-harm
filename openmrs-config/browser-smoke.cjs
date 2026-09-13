@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const runtime = path.resolve(__dirname, '../runs/openmrs');
-const manifest = JSON.parse(fs.readFileSync(path.join(runtime, 'manifest.json')));
+const manifest = JSON.parse(fs.readFileSync(process.env.DNH_MANIFEST || path.join(runtime, 'manifest.json')));
 const credentials = JSON.parse(fs.readFileSync(path.join(runtime, 'credentials.json')));
 
 async function login(page, identity) {
@@ -68,7 +68,7 @@ async function login(page, identity) {
     console.log('PASS separate review browser session opens the same result');
     await page.goto(manifest.base_url + '/spa/home');
     await page.getByText('Active Visits', {exact: true}).waitFor();
-    const row = page.getByRole('row').filter({hasText: 'DNH SYNTHETIC'}).filter({hasText: 'Emergency Visit'});
+    const row = page.getByRole('row').filter({hasText: 'DNH SYNTHETIC'}).filter({has: page.locator(`a[href*='${manifest.seed.patient_uuid}']`)});
     assert.equal(await row.count(), 1);
     await page.getByText('OpenMRS ID', {exact: true}).waitFor();
     await page.screenshot({path: path.join(runtime, 'active-visits.png'), fullPage: true});

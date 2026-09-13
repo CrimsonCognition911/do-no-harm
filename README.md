@@ -4,7 +4,7 @@ Live emergency-medicine simulation and coaching around **OpenMRS 3**. The doctor
 
 ## Current status
 
-This is an **offline backend foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, and a frozen-policy adaptive planner tested with non-clinical fixtures. OpenMRS, Agents API, Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and they make no provider calls.
+This is an **offline integration foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side GPT-Live-1 WebRTC/BFF interface tested with non-clinical fixtures. OpenMRS, Agents API, provider-backed Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and their tests make no provider calls.
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
@@ -40,7 +40,7 @@ python3 -m backend.demo
 | `backend/`, `contracts/`, clinical cases/rubrics and backend tests | @CrimsonSithria | [#1](https://github.com/CrimsonCognition911/do-no-harm/issues/1), [#3](https://github.com/CrimsonCognition911/do-no-harm/issues/3), [#4](https://github.com/CrimsonCognition911/do-no-harm/issues/4), [#6](https://github.com/CrimsonCognition911/do-no-harm/issues/6) |
 | `frontend/`, `openmrs-config/`, review-browser executor and deployment | @tijoseymathew | [#2](https://github.com/CrimsonCognition911/do-no-harm/issues/2), [#5](https://github.com/CrimsonCognition911/do-no-harm/issues/5), [#7](https://github.com/CrimsonCognition911/do-no-harm/issues/7), [#8](https://github.com/CrimsonCognition911/do-no-harm/issues/8) |
 
-The frontend folder contains handoff instructions. The [OpenMRS configuration pack](openmrs-config/README.md) provides a local synthetic ED workflow fixture, separate identities, live/browser tests and verified metadata mappings; clinical review remains pending. The frontend stack is left to its owner. Keep OpenMRS; do not build a replacement EMR.
+The frontend folder contains the doctor sidecar and its local BFF setup instructions. The [OpenMRS configuration pack](openmrs-config/README.md) provides a local synthetic ED workflow fixture, separate identities, live/browser tests and verified metadata mappings; clinical review remains pending. The frontend stack is left to its owner. Keep OpenMRS; do not build a replacement EMR.
 
 Use separate feature branches (for example `codex/examiner` and `codex/doctor-experience`) and small PRs. Coordinate edits to the root manifest, shared plan and event schema; @CrimsonSithria owns schema changes. Do not overwrite each other's work. No Agent Forest.
 
