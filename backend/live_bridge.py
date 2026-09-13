@@ -6,6 +6,8 @@ never accepted here: a trusted consume-once resolver supplies an immutable recei
 which is projected to pre-approved participant copy.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 import secrets
