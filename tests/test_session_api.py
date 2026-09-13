@@ -198,3 +198,56 @@ class SessionAPITests(unittest.TestCase):
     def test_weak_operator_secret_is_rejected(self):
         with self.assertRaises(ValueError):
             app.create_server(0, operator_token="weak")
+
+    def test_examiner_route_forwards_exact_body_and_run_scoped_token(self):
+        class Bridge:
+            calls = []
+
+            def handle(self, token, body):
+                self.calls.append((token, body))
+                return {
+                    "status": "complete",
+                    "spoken_update": "What will you reassess next?",
+                    "evidence_ids": [],
+                }
+
+            def handle_delivery(self, token, body):
+                self.calls.append((token, body))
+                return {"accepted": True}
+
+        bridge = Bridge()
+        self.server.examiner_bridge = bridge
+        body = {
+            "type": "live_delegation",
+            "run_id": self.session["run_id"],
+            "delegation_id": "delegate-http-1",
+            "offset_ms": 10,
+            "execution_version": 1,
+            "transcript": [],
+            "participant_event_ids": [],
+        }
+        status, _, result = self.request(
+            "POST", "/api/examiner", self.tokens["examiner"], body
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["spoken_update"], "What will you reassess next?")
+        self.assertEqual(bridge.calls, [(self.tokens["examiner"], body)])
+        delivery = {
+            "type": "delivery_ack",
+            "run_id": self.session["run_id"],
+            "event_id": "published-1",
+            "execution_version": 1,
+            "stage": "displayed",
+        }
+        status, _, result = self.request(
+            "POST", "/api/examiner/delivery", self.tokens["examiner"], delivery
+        )
+        self.assertEqual((status, result), (200, {"accepted": True}))
+        self.assertEqual(bridge.calls[-1], (self.tokens["examiner"], delivery))
+
+    def test_examiner_configuration_fails_closed_on_partial_credentials(self):
+        self.assertIsNone(app.configured_examiner_bridge_factory({}))
+        with self.assertRaises(ValueError):
+            app.configured_examiner_bridge_factory({"OPENAI_API_KEY": "secret"})
+        with self.assertRaises(ValueError):
+            app.configured_examiner_bridge_factory({"DNH_EXAMINER_AGENT_ID": "agent-1"})

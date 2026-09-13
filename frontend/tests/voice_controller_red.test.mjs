@@ -67,6 +67,22 @@ test("late delegation replies are discarded after pause", async () => {
   assert.equal(calls.live.some(e => e.content === "stale result"), false);
 });
 
+test("a concern pause signal is never raced into Live commentary", async () => {
+  const { controller, calls } = harness();
+  controller.setConsent(true);
+  controller.connected = true;
+  controller.state = "running";
+  controller.delegate = async () => ({
+    status: "pause_requested",
+    spoken_update: "Pause. Review is required.",
+  });
+  await controller.handleDelegation({
+    delegation: { id: "concern", target: "client" },
+    offset_ms: 0,
+  });
+  assert.equal(calls.live.length, 0);
+});
+
 test("disconnect requests a real pause and reconnect cannot clear it", async () => {
   const { controller, calls } = harness();
   controller.state = "running";
