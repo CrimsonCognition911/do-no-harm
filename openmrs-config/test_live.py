@@ -3,9 +3,17 @@
 import json
 import os
 from pathlib import Path
+import sys
 import unittest
 from urllib.error import HTTPError
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.adaptation import AdaptivePlanner, FrozenCase
+from backend.execution import OpenMRSExecutor
+from backend.runtime import Run
 from configure import Client, HERE, FORM_FIELDS, timestamp
 
 RUNTIME = HERE.parent / "runs" / "openmrs"
@@ -54,6 +62,50 @@ class LiveEDTests(unittest.TestCase):
         saved = client.request("POST", "encounter", self.encounter("simulation", "Reassessment"))
         read = client.request("GET", f"encounter/{saved['uuid']}?v=full")
         self.assertEqual(read["auditInfo"]["creator"]["uuid"], self.manifest["identities"]["simulation"]["user_uuid"])
+
+    def test_authoritative_runtime_publishes_once_and_reads_bound_visit(self):
+        fixture = json.loads((HERE.parent / "contracts" / "adaptive-fixture.json").read_text())
+        case = FrozenCase(fixture, fixture=True)
+        now = [0.0]
+        concept = self.manifest["concepts"]["reassessment"]
+        run_id = "dnh06-" + self.manifest["run_key"]
+        run = Run(run_id, resource_refs={concept}, clock=lambda: now[0])
+        run.start(expected_version=1)
+        now[0] = 6.0
+        planner = AdaptivePlanner(
+            case,
+            run,
+            bindings={"state": concept, "result": concept, "challenge": concept},
+        )
+        binding = {
+            "fixture_only": self.manifest["fixture_only"],
+            "run_id": run_id,
+            "patient_uuid": self.manifest["seed"]["patient_uuid"],
+            "visit_uuid": self.manifest["seed"]["visit_uuid"],
+            "encounter_type_uuid": self.manifest["encounter_types"]["Reassessment"],
+            "location_uuid": self.manifest["locations"]["Observation"],
+            "provider_uuid": self.manifest["identities"]["simulation"]["provider_uuid"],
+            "encounter_role_uuid": self.manifest["encounter_role"],
+            "concept_uuids": sorted(self.manifest["concepts"].values()),
+        }
+        executor = OpenMRSExecutor(
+            run,
+            planner,
+            self.clients["simulation"],
+            binding=binding,
+            ledger_path=RUNTIME / "dnh06-publications.sqlite3",
+        )
+
+        first = executor.publish_due("unresolved-consequence", expected_version=1)
+        retry = executor.publish_due("unresolved-consequence", expected_version=1)
+        read = self.clients["simulation"].request(
+            "GET", f"encounter/{first['encounter_uuid']}?v=full"
+        )
+
+        self.assertEqual(retry, first)
+        self.assertEqual(read["patient"]["uuid"], binding["patient_uuid"])
+        self.assertEqual(read["visit"]["uuid"], binding["visit_uuid"])
+        self.assertEqual(len([obs for obs in read["obs"] if obs.get("comment") == first["marker"]]), 1)
 
     def test_review_reads_but_cannot_create_update_or_delete(self):
         m = self.manifest
