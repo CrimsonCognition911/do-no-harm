@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CrimsonCognition911/do-no-harm/contracts/events/0.1",
+  "title": "DO NO HARM draft application event envelope",
+  "description": "Draft 0.1 for team review. This is not an OpenAI API schema. Validation does not authorize a source, confirm clinical execution, or implement delivery/transition rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "type", "event_id", "run_id", "actor", "occurred_at", "simulation_time_ms", "execution_version", "evidence_ids", "visibility", "payload"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "type": {"enum": ["doctor_action", "clinical_update", "evaluation_finding", "session_state"]},
+    "event_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "actor": {"enum": ["doctor", "simulation_service", "examiner"]},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "simulation_time_ms": {"type": "integer", "minimum": 0},
+    "execution_version": {"type": "integer", "minimum": 1},
+    "evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "visibility": {"enum": ["participant", "examiner"]},
+    "payload": {"type": "object"}
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {"const": "doctor_action"},
+        "actor": {"const": "doctor"},
+        "payload": {"$ref": "#/$defs/doctorAction"}
+      }
+    },
+    {
+      "properties": {
+        "type": {"const": "clinical_update"},
+        "actor": {"const": "simulation_service"},
+        "payload": {"$ref": "#/$defs/clinicalUpdate"}
+      }
+    },
+    {
+      "properties": {
+        "type": {"const": "evaluation_finding"},
+        "actor": {"const": "examiner"},
+        "visibility": {"const": "examiner"},
+        "payload": {"$ref": "#/$defs/evaluationFinding"}
+      }
+    },
+    {
+      "properties": {
+        "type": {"const": "session_state"},
+        "actor": {"const": "simulation_service"},
+        "payload": {"$ref": "#/$defs/sessionState"}
+      }
+    }
+  ],
+  "$defs": {
+    "doctorAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "phase", "source"],
+      "properties": {
+        "action": {"type": "string", "minLength": 1},
+        "phase": {"enum": ["observed", "intent", "confirmed"]},
+        "source": {"enum": ["browser", "speech", "openmrs_backend"]},
+        "resource_ref": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"phase": {"const": "confirmed"}}},
+      "then": {
+        "required": ["resource_ref"],
+        "properties": {"source": {"const": "openmrs_backend"}}
+      }
+    },
+    "clinicalUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario_event_id", "summary", "resource_ref", "delivery_stage"],
+      "properties": {
+        "scenario_event_id": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
+        "resource_ref": {"type": "string", "minLength": 1},
+        "delivery_stage": {"enum": ["published", "displayed", "spoken"]}
+      }
+    },
+    "evaluationFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion_id", "outcome", "rationale", "requires_clinician_review"],
+      "properties": {
+        "criterion_id": {"type": "string", "minLength": 1},
+        "outcome": {"enum": ["acceptable", "concern", "insufficient_evidence"]},
+        "rationale": {"type": "string", "minLength": 1},
+        "requires_clinician_review": {"type": "boolean"}
+      }
+    },
+    "sessionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "mode", "assisted"],
+      "properties": {
+        "state": {"enum": ["created", "running", "pause_requested", "paused", "coaching", "resume_requested", "debrief", "ended", "failed"]},
+        "mode": {"enum": ["coached", "assessment"]},
+        "assisted": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

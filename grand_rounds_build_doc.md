@@ -338,6 +338,36 @@ The [event listing](https://luma.com/fdzbrq5b) specifies a five-hour build windo
 
 Use Astra throughout development as required by the event, and retain actual build evidence. Confirm model/runtime access early. If a core API is unavailable, disclose that dependency rather than substituting another runtime and claiming the same integration.
 
+### 14.1 Two-person ownership and GitHub tasks
+
+GitHub issues are the source of truth for task status. This table records the agreed ownership; creating an issue does not mean its implementation is complete.
+
+**@CrimsonSithria owns the clinical examiner/backend. @tijoseymathew owns the doctor experience, OpenMRS ED setup and deployment.**
+
+| Issue | Owner | Deliverable | Integration dependencies |
+|---|---|---|---|
+| [#1 DNH-01](https://github.com/CrimsonCognition911/do-no-harm/issues/1) | @CrimsonSithria | Define shared event contracts and session boundaries | Start now |
+| [#2 DNH-02](https://github.com/CrimsonCognition911/do-no-harm/issues/2) | @tijoseymathew | Configure OpenMRS 3 for the synthetic emergency department | Start now |
+| [#3 DNH-03](https://github.com/CrimsonCognition911/do-no-harm/issues/3) | @CrimsonSithria | Author and review one adaptive emergency case and rubric | #1 |
+| [#4 DNH-04](https://github.com/CrimsonCognition911/do-no-harm/issues/4) | @CrimsonSithria | Build Astra examiner on Agents API and Live delegation bridge | #1, #3 |
+| [#5 DNH-05](https://github.com/CrimsonCognition911/do-no-harm/issues/5) | @tijoseymathew | Build GPT-Live-1 doctor voice interface and action feed | #1 |
+| [#6 DNH-06](https://github.com/CrimsonCognition911/do-no-harm/issues/6) | @CrimsonSithria | Implement adaptive case runner, event injection and pause protocol | #1, #2, #3, #4 |
+| [#7 DNH-07](https://github.com/CrimsonCognition911/do-no-harm/issues/7) | @tijoseymathew | Add read-only CUA evidence review and coaching display | #1, #4, #5, #6 |
+| [#8 DNH-08](https://github.com/CrimsonCognition911/do-no-harm/issues/8) | @tijoseymathew | Integrate, deploy and record the doctor-first demo | #2, #3, #4, #5, #6, #7 |
+
+Dependencies gate integration/completion, not all preparation. Both people can start with the shared contract and clearly labeled fixtures.
+
+### 14.2 Working together
+
+- @CrimsonSithria owns the shared event/message definitions; @tijoseymathew reviews client needs before either side changes the contract.
+- Agree doctor_action, clinical_update, evaluation_finding and session_state envelopes, including run/event identity, source/actor, evidence, simulation/wall-clock times and execution version.
+- The browser reports observed interactions/intent; the backend independently records confirmed clinical actions. GPT-Live-1 receives permitted live updates, while Astra receives the evidence needed for evaluation.
+- The backend supplies evidence-linked findings and pause authorization. The experience layer supplies the separate read-only CUA review executor and synchronizes the displayed evidence with voice coaching.
+- First shared milestone: one spoken exchange and one chart action reach Astra, and a permitted response returns through Live. Integrate this before waiting for the full adaptive case and CUA workflow.
+- Use separate feature branches and non-overlapping code areas. Do not edit each other's work or the shared contract without coordination. Work directly; no Agent Forest.
+- @tijoseymathew leads deployment/video; @CrimsonSithria supplies clinical review and checks both adaptation paths. Both review the final demonstration.
+- Keep AI-agent participation deferred until the complete doctor loop works. Never present fixture tests as real provider, clinical or deployed proof.
+
 ## 15. Demo and verification
 
 The doctor uses OpenMRS; the evaluator panel shows running/paused state and the evidence timeline. Keep hidden rubric details off the doctor's active assessment view.
