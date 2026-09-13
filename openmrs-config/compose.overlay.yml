@@ -1,0 +1,5 @@
+# Apply after the existing local compose file. No backend/database recreation.
+services:
+  frontend:
+    volumes:
+      - ./openmrs-config/config-dnh.json:/usr/share/nginx/html/config-core_demo.json:ro

@@ -1,0 +1,52 @@
+name: do-no-harm-openmrs
+services:
+  gateway:
+    image: openmrs/openmrs-reference-application-3-gateway@sha256:49070abbcda8aeced46f78ce0c1559236a2ba45bc624fe8485a59220cbd159a2
+    ports: ["127.0.0.1:${OPENMRS_PORT:-8090}:80"]
+    depends_on: [frontend, backend]
+  frontend:
+    image: openmrs/openmrs-reference-application-3-frontend@sha256:f6b1f8443ab27a6b1c3944c5a948f2e0cdfea3701dcfd59316677fef28a58f8d
+    environment:
+      SPA_PATH: /openmrs/spa
+      API_URL: /openmrs
+      SPA_CONFIG_URLS: /openmrs/spa/config-core_demo.json
+      SPA_DEFAULT_LOCALE: ""
+    volumes:
+      - ./config-dnh.json:/usr/share/nginx/html/config-core_demo.json:ro
+    depends_on: [backend]
+  backend:
+    image: openmrs/openmrs-reference-application-3-backend@sha256:929cfe5dca5f221460e0f4a57abb9294614df5f74fbb3bb865e01b8dfe7a985b
+    environment:
+      OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
+      OMRS_CONFIG_CREATE_TABLES: "true"
+      OMRS_CONFIG_CONNECTION_SERVER: db
+      OMRS_CONFIG_CONNECTION_DATABASE: openmrs
+      OMRS_CONFIG_CONNECTION_USERNAME: openmrs
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OMRS_DB_PASSWORD:?Set the existing or new local database password}
+    volumes: [openmrs-data:/openmrs/data]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs/health/started"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+  db:
+    image: mariadb@sha256:27292753bb759cd22be72e3c8192f1259ef47010c8634b5da0bc886845efe9fd
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    environment:
+      MYSQL_DATABASE: openmrs
+      MYSQL_USER: openmrs
+      MYSQL_PASSWORD: ${OMRS_DB_PASSWORD:?Set the existing or new local database password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set the existing or new root database password}
+    volumes: [db-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+volumes:
+  openmrs-data:
+  db-data:
