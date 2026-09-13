@@ -1,0 +1,187 @@
+{
+  "format": "dnh.compiled-case/0.2",
+  "id": "stemi-the-ecg-cannot-wait",
+  "version": "0.1.0-draft",
+  "description": "The ECG cannot wait",
+  "rubric": {
+    "id": "stemi-clinical-rubric",
+    "version": "0.1.0-draft",
+    "criteria": [
+      {
+        "id": "mi.initial_assessment",
+        "description": "Appropriate urgency and assessment in context. Evidence: first_medical_contact_time, ecg_acquisition_receipt, monitoring_evidence."
+      },
+      {
+        "id": "mi.ecg_interpretation",
+        "description": "Recognizes the released STEMI report or supplied reviewed ECG. Evidence: ecg_publication_receipt, ecg_display_receipt, doctor_utterance_or_note."
+      },
+      {
+        "id": "mi.reperfusion_escalation",
+        "description": "Urgent appropriate escalation without waiting for biomarkers alone. Evidence: diagnostic_ecg_available_time, pathway_intent, pathway_activation_receipt."
+      },
+      {
+        "id": "mi.initial_treatment_safety",
+        "description": "Appropriate local-protocol treatment and attention to contraindications; dose scoring excluded. Evidence: history_queries, relevant_contraindication_evidence, treatment_intent, supported_execution_receipts."
+      },
+      {
+        "id": "mi.reassessment",
+        "description": "Responds appropriately to the new hypotension and ongoing symptoms. Evidence: new_vitals_publication, new_vitals_delivery, reassessment_actions, escalation_evidence."
+      },
+      {
+        "id": "mi.communication",
+        "description": "Clear reasoning, shared plan and communication of risk. Evidence: doctor_explanation, receiving_team_handoff, teach_back."
+      }
+    ],
+    "outcomes": [
+      "acceptable",
+      "concern",
+      "insufficient_evidence"
+    ],
+    "requires_clinician_review": true,
+    "numeric_pass_fail_score_enabled": false,
+    "alternatives_policy": "Accept clinically justified alternatives under the stated setting and approved local guideline; avoid keyword-only grading."
+  },
+  "policy": {
+    "version": "0.1.0-draft",
+    "min_difficulty": 1,
+    "max_difficulty": 2,
+    "max_pending_challenges": 1
+  },
+  "initial_state": {
+    "ecg_acquired": false,
+    "diagnostic_ecg_published": false,
+    "blood_sample_collected": false,
+    "reperfusion_pathway_activated": false,
+    "reperfusion_completed": false,
+    "handoff_completed": false
+  },
+  "actions": [
+    {
+      "action": "confirm_ecg_acquisition",
+      "set_state": {
+        "ecg_acquired": true
+      }
+    },
+    {
+      "action": "confirm_blood_sample_collection",
+      "set_state": {
+        "blood_sample_collected": true
+      }
+    },
+    {
+      "action": "confirm_reperfusion_pathway_activation",
+      "set_state": {
+        "reperfusion_pathway_activated": true
+      }
+    },
+    {
+      "action": "confirm_receiving_team_handoff",
+      "set_state": {
+        "handoff_completed": true
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "diagnostic_ecg",
+      "kind": "clinical_consequence",
+      "summary": "Synthetic ECG report: sinus rhythm with anterior ST-segment elevation in contiguous precordial leads, consistent with acute anterior STEMI in this clinical context.",
+      "resource_key": "diagnostic_ecg",
+      "earliest_ms": 0,
+      "latest_ms": 0,
+      "requires": {
+        "ecg_acquired": true
+      },
+      "difficulty": 0,
+      "criterion_id": null,
+      "outcome": null,
+      "allowed_modes": [
+        "coached",
+        "assessment"
+      ],
+      "schedule": {
+        "basis": "state_transition",
+        "state_ref": "ecg_acquired",
+        "delay_ms": 0
+      },
+      "set_state": {
+        "diagnostic_ecg_published": true
+      }
+    },
+    {
+      "id": "troponin_result",
+      "kind": "clinical_consequence",
+      "summary": "Above the local assay's upper reference limit in this synthetic case.",
+      "resource_key": "troponin_result",
+      "earliest_ms": 300000,
+      "latest_ms": 300000,
+      "requires": {
+        "blood_sample_collected": true
+      },
+      "difficulty": 0,
+      "criterion_id": null,
+      "outcome": null,
+      "allowed_modes": [
+        "coached",
+        "assessment"
+      ],
+      "schedule": {
+        "basis": "state_transition",
+        "state_ref": "blood_sample_collected",
+        "delay_ms": 300000
+      },
+      "set_state": {}
+    },
+    {
+      "id": "persistent_ischaemia_with_hypotension",
+      "kind": "clinical_consequence",
+      "summary": "Persistent chest pain with new light-headedness and clamminess.",
+      "resource_key": "reassessment_vitals",
+      "earliest_ms": 360000,
+      "latest_ms": 360000,
+      "requires": {
+        "reperfusion_completed": false,
+        "handoff_completed": false
+      },
+      "difficulty": 0,
+      "criterion_id": null,
+      "outcome": null,
+      "allowed_modes": [
+        "coached",
+        "assessment"
+      ],
+      "schedule": {
+        "basis": "simulation_time",
+        "state_ref": null,
+        "delay_ms": 360000
+      },
+      "set_state": {}
+    },
+    {
+      "id": "transfer_logistics_challenge",
+      "kind": "optional_challenge",
+      "summary": "The receiving team asks for your contingency plan if the currently proposed transfer cannot meet the local reperfusion time target.",
+      "resource_key": "transfer_update",
+      "earliest_ms": 120000,
+      "latest_ms": 300000,
+      "requires": {
+        "diagnostic_ecg_published": true,
+        "reperfusion_pathway_activated": true,
+        "handoff_completed": false
+      },
+      "difficulty": 2,
+      "criterion_id": "mi.reperfusion_escalation",
+      "outcome": "acceptable",
+      "allowed_modes": [
+        "coached",
+        "assessment"
+      ],
+      "schedule": {
+        "basis": "examiner_selection",
+        "state_ref": null,
+        "delay_ms": 0
+      },
+      "set_state": {}
+    }
+  ]
+}
