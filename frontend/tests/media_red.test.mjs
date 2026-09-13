@@ -14,6 +14,7 @@ async function browserHarness() {
     textContent: "", value: "", addEventListener(name, fn) { this.listeners[name] = fn; },
     pause() {}, play() { calls.played++; return Promise.resolve(); }, append() {} });
   let failFeed = false;
+  let failDelegation = false;
   let feed = { execution_version: 1, events: [state("start", "running", 1)], next_cursor: 1 };
   let peer;
   class Peer {
@@ -39,6 +40,7 @@ async function browserHarness() {
     fetch: async (path, options = {}) => {
       calls.requests.push({ path, body: options.body && JSON.parse(options.body), audioAttached: !!elements.get("#remote-audio")?.srcObject });
       if (path.startsWith("/api/events") && failFeed) throw new Error("offline");
+      if (path === "/api/delegations" && failDelegation) throw new Error("examiner timeout");
       const result = path === "/api/bootstrap" ? {
         csrf: "test",
         live_available: true,
@@ -54,7 +56,8 @@ async function browserHarness() {
   const api = await vm.runInNewContext(`(async () => { ${source}\nreturn { controller, connectVoice, poll }; })()`, sandbox);
   await api.poll();
   api.controller.setConsent(true);
-  return { ...api, calls, elements, setFeed: (value) => { feed = value; }, failFeed: () => { failFeed = true; }, peer: () => peer };
+  return { ...api, calls, elements, setFeed: (value) => { feed = value; }, failFeed: () => { failFeed = true; },
+    failDelegation: () => { failDelegation = true; }, peer: () => peer };
 }
 
 test("browser pause stops tracks and detaches audio before acknowledging; reconnect restores playback", async () => {
@@ -134,4 +137,16 @@ test("assessment welcome is spoken once after Live starts and is not replayed on
     delegation_id: null,
     content: "Welcome to the synthetic emergency assessment.",
   }]);
+});
+
+test("examiner transport failure latches an authoritative technical pause", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  h.failDelegation();
+  h.peer().channel.listeners.message({data: JSON.stringify({
+    type: "session.delegation.created", delegation: {id: "failed", target: "client"}, offset_ms: 0,
+  })});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(h.calls.requests.some(item => item.path === "/api/technical-pause"));
+  assert.equal(h.elements.get("#remote-audio").muted, true);
 });

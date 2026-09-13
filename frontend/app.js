@@ -25,7 +25,8 @@ let pollTimer;
 let liveSessionId;
 let voiceAttempt = 0;
 let assessmentWelcome;
-let welcomeSent = false;
+let welcomeState = "not_sent";
+let welcomeEventId;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -38,7 +39,9 @@ async function api(path, options = {}) {
 }
 
 function sendLive(event) {
-  if (channel?.readyState === "open") channel.send(JSON.stringify(event));
+  if (channel?.readyState !== "open") return false;
+  channel.send(JSON.stringify(event));
+  return true;
 }
 
 function setStatus(status) {
@@ -93,7 +96,8 @@ const controller = new VoiceController({
   sendLive,
   requestTechnicalPause: (body) => api("/api/technical-pause", {method: "POST", body: JSON.stringify(body)}),
   delegate: (body) => api("/api/delegations", { method: "POST", body: JSON.stringify(body) }).catch((error) => {
-    elements.detail.textContent = `Examiner unavailable: ${error.message}. The conversation remains unscored.`;
+    void controller.technicalPause();
+    elements.detail.textContent = `Examiner unavailable: ${error.message}. The attempt is unscored and the simulation is entering technical pause.`;
     return null;
   }),
   acknowledgeDelivery: (event, stage) => api("/api/delivery", {
@@ -142,14 +146,19 @@ async function connectVoice() {
       const event = JSON.parse(data);
       if (peer === connection) {
         Promise.resolve(controller.onLiveEvent(event)).catch(() => controller.technicalPause());
-        if (event.type === "session.started" && !welcomeSent && assessmentWelcome) {
-          welcomeSent = true;
-          sendLive({
+        if (event.type === "session.started" && welcomeState === "not_sent" && assessmentWelcome) {
+          welcomeEventId ||= `assessment-welcome:${crypto.randomUUID()}`;
+          if (sendLive({
             type: "session.commentary.append",
-            event_id: `assessment-welcome:${crypto.randomUUID()}`,
+            event_id: welcomeEventId,
             delegation_id: null,
             content: assessmentWelcome,
-          });
+          })) welcomeState = "pending";
+        } else if (event.type === "session.commentary.appended" && event.client_event_id === welcomeEventId) {
+          welcomeState = "accepted";
+        } else if (event.type === "error" && event.error?.client_event_id === welcomeEventId) {
+          welcomeState = "failed";
+          void controller.technicalPause();
         }
       }
     } catch { /* malformed provider events are ignored */ }

@@ -33,6 +33,7 @@ export class VoiceController {
     this.transcript = [];
     this.events = new Map();
     this.announced = new Set();
+    this.confirmedShared = new Set();
   }
 
   setConsent(value) {
@@ -48,6 +49,8 @@ export class VoiceController {
   addCorrection(value) {
     const correction = typeof value === "string" ? value.trim() : "";
     if (!correction) return false;
+    // Results delegated before this correction were computed from stale context.
+    this.generation++;
     this.transcript.push({ speaker: "doctor", text: correction, corrected: true, source: "typed", start_ms: null, end_ms: null });
     this.trimTranscript();
     return true;
@@ -70,6 +73,7 @@ export class VoiceController {
       if (this.state === "resume_requested") return this.acknowledgeAudio("resume", this.executionVersion);
       if (this.state === "running" && !this.fault) {
         for (const item of this.events.values()) {
+          if (item.type === "doctor_action") this.shareConfirmedAction(item);
           if (item.type === "clinical_update" && item.payload.delivery_stage === "published") this.announce(item);
         }
       }
@@ -136,6 +140,7 @@ export class VoiceController {
         this.events.set(event.event_id, event);
         this.renderEvent(event);
       }
+      if (event.type === "doctor_action") this.shareConfirmedAction(event);
       if (event.type === "clinical_update" && event.payload.delivery_stage === "published") {
         if (!this.displayed.has(event.event_id)) {
           const receipt = await this.acknowledgeDelivery(event, "displayed");
@@ -187,6 +192,18 @@ export class VoiceController {
       event_id: `clinical-update:${event.event_id}`,
       delegation_id: null,
       content: `Confirmed synthetic chart update: ${event.payload.summary}`,
+    });
+  }
+
+  shareConfirmedAction(event) {
+    if (!this.connected || this.fault || this.state !== "running" || this.confirmedShared.has(event.event_id) ||
+        event.payload.phase !== "confirmed" || event.payload.source !== "openmrs_backend" || !text(event.payload.action, 1000)) return;
+    this.confirmedShared.add(event.event_id);
+    this.sendLive({
+      type: "session.instructions.append",
+      event_id: `confirmed-action:${event.event_id}`,
+      delegation_id: null,
+      content: `Application-confirmed synthetic chart action: ${event.payload.action}. Delegate to the client now so the examiner can reassess current evidence.`,
     });
   }
 
