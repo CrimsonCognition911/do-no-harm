@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "configuration_version": "1.0.0",
+  "clinical_review": "pending",
+  "fixture_only": true,
+  "locations": {
+    "Emergency Department": "d531c1cd-1d55-4694-9ad5-ac5b3b296f2b",
+    "Triage": "5649f4ea-6fd1-4ec1-8148-3a2cf9325896",
+    "Resuscitation": "189e5802-405c-409e-a0e6-82dd1822623a",
+    "Observation": "3ec6f464-cc5c-4a63-b1c4-343b6cca31c2"
+  },
+  "encounter_types": {
+    "Triage": "8a1b6dd3-21cc-46cf-a1b5-994ff0921f0a",
+    "ED Assessment": "638ac486-f40e-4a7b-b1bd-28b150245c0a",
+    "Reassessment": "5c4c20d0-460d-41dd-b213-04b802b5ff08",
+    "Disposition": "7d21d049-746f-47bf-a07c-65d796ed7b82"
+  },
+  "forms": {
+    "Triage": "53cca369-48af-4622-baf6-079bec4787af",
+    "ED Assessment": "8ab79801-c6a9-46e0-9a5e-09cfbdf81eca",
+    "Reassessment": "a1f31a23-db61-4c8f-9b48-5d7a5f09deb5",
+    "Disposition": "fcd86486-02cc-439f-9fa9-e12618d74c06"
+  },
+  "concepts": {
+    "acuity": "c58a0dea-25ce-453e-884f-ebe8ae6f24e9",
+    "complaint": "965788e2-89dc-4d02-954c-409113a76212",
+    "assessment": "ef409656-9118-435c-a480-e9129f81acbc",
+    "reassessment": "9d980ea6-9dc3-433b-9c51-088887f465b4",
+    "disposition": "3e7a8b89-2db6-4957-8e3b-48fe39ba878c"
+  },
+  "visit_type": "b3587935-61a1-4fd0-a1cb-790780011e8b",
+  "encounter_role": "240b26f9-dd88-4172-823d-4a8bfeb7841f",
+  "numeric_concepts": {
+    "temperature": {
+      "uuid": "5088AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "units": "DEG C",
+      "datatype": "Numeric"
+    },
+    "haemoglobin": {
+      "uuid": "21AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "units": "g/dL",
+      "datatype": "Numeric"
+    }
+  },
+  "roles": {
+    "doctor": {
+      "uuid": "534c3e70-2dc8-4b88-b10a-dfc6b894a6ef",
+      "privileges": [
+        "Get Patients",
+        "Get People",
+        "Get Patient Identifiers",
+        "Get Visits",
+        "Get Visit Types",
+        "Get Encounters",
+        "Get Encounter Types",
+        "Get Encounter Roles",
+        "Get Observations",
+        "Get Concepts",
+        "Get Forms",
+        "Get Locations",
+        "Get Providers",
+        "Get Orders",
+        "Get Order Types",
+        "Get Order Frequencies",
+        "Get Allergies",
+        "Get Conditions",
+        "Get Diagnoses",
+        "Get Medication Dispense",
+        "Get Global Properties",
+        "Get Identifier Types",
+        "Get Users",
+        "Get Care Settings",
+        "Get Queue Entries",
+        "Get Queues",
+        "Get Concept Sources",
+        "Get Concept Reference Terms",
+        "Get Concept Map Types",
+        "Add Encounters",
+        "Edit Encounters",
+        "Add Observations",
+        "Edit Observations",
+        "Form Entry"
+      ]
+    },
+    "simulation": {
+      "uuid": "01fd8bcd-8354-4dcf-a5c6-9edbf9ef3d55",
+      "privileges": [
+        "Get Patients",
+        "Get People",
+        "Get Patient Identifiers",
+        "Get Visits",
+        "Get Visit Types",
+        "Get Encounters",
+        "Get Encounter Types",
+        "Get Encounter Roles",
+        "Get Observations",
+        "Get Concepts",
+        "Get Forms",
+        "Get Locations",
+        "Get Providers",
+        "Get Orders",
+        "Get Order Types",
+        "Get Order Frequencies",
+        "Get Allergies",
+        "Get Conditions",
+        "Get Diagnoses",
+        "Get Medication Dispense",
+        "Get Global Properties",
+        "Get Identifier Types",
+        "Get Users",
+        "Get Care Settings",
+        "Get Queue Entries",
+        "Get Queues",
+        "Get Concept Sources",
+        "Get Concept Reference Terms",
+        "Get Concept Map Types",
+        "Add Encounters",
+        "Add Observations"
+      ]
+    },
+    "review": {
+      "uuid": "4c7e7bb7-7a72-4baa-8d09-1bbfc2026758",
+      "privileges": [
+        "Get Patients",
+        "Get People",
+        "Get Patient Identifiers",
+        "Get Visits",
+        "Get Visit Types",
+        "Get Encounters",
+        "Get Encounter Types",
+        "Get Encounter Roles",
+        "Get Observations",
+        "Get Concepts",
+        "Get Forms",
+        "Get Locations",
+        "Get Providers",
+        "Get Orders",
+        "Get Order Types",
+        "Get Order Frequencies",
+        "Get Allergies",
+        "Get Conditions",
+        "Get Diagnoses",
+        "Get Medication Dispense",
+        "Get Global Properties",
+        "Get Identifier Types",
+        "Get Users",
+        "Get Care Settings",
+        "Get Queue Entries",
+        "Get Queues",
+        "Get Concept Sources",
+        "Get Concept Reference Terms",
+        "Get Concept Map Types"
+      ]
+    }
+  }
+}

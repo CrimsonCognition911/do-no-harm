@@ -1,0 +1,30 @@
+{
+  "@openmrs/esm-patient-chart-app": {
+    "restrictByVisitLocationTag": true,
+    "showUpcomingAppointments": false,
+    "extensionSlots": {
+      "patient-chart-dashboard-slot": {
+        "order": ["charts-summary-dashboard", "results-summary-dashboard", "test-results-summary-dashboard", "encounters-summary-dashboard", "allergies-summary-dashboard", "medications-summary-dashboard", "patient-orders-summary-dashboard", "conditions-summary-dashboard"],
+        "remove": ["immunization-summary-dashboard", "attachments-results-summary-dashboard", "procedures-summary-dashboard", "programs-summary-dashboard", "patient-appointments-summary-dashboard", "billing-summary-dashboard-link"]
+      }
+    }
+  },
+  "@openmrs/esm-patient-forms-app": {
+    "showHtmlFormEntryForms": true,
+    "orderBy": "name"
+  },
+  "@openmrs/esm-active-visits-app": {
+    "activeVisits": {
+      "identifiers": [{"identifierName": "OpenMRS ID", "header": {"key": "openmrsId", "default": "OpenMRS ID"}}]
+    }
+  },
+  "@openmrs/esm-service-queues-app": {
+    "extensionSlots": {
+      "service-queues-dashboard-slot": {
+        "add": ["active-visits-widget"],
+        "remove": ["service-queues-dashboard"]
+      }
+    }
+  },
+  "@openmrs/esm-styleguide": {"Brand color #1": "#005d5d"}
+}

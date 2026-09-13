@@ -36,7 +36,7 @@ python3 -m backend.demo
 | `backend/`, `contracts/`, clinical cases/rubrics and backend tests | @CrimsonSithria | [#1](https://github.com/CrimsonCognition911/do-no-harm/issues/1), [#3](https://github.com/CrimsonCognition911/do-no-harm/issues/3), [#4](https://github.com/CrimsonCognition911/do-no-harm/issues/4), [#6](https://github.com/CrimsonCognition911/do-no-harm/issues/6) |
 | `frontend/`, `openmrs-config/`, review-browser executor and deployment | @tijoseymathew | [#2](https://github.com/CrimsonCognition911/do-no-harm/issues/2), [#5](https://github.com/CrimsonCognition911/do-no-harm/issues/5), [#7](https://github.com/CrimsonCognition911/do-no-harm/issues/7), [#8](https://github.com/CrimsonCognition911/do-no-harm/issues/8) |
 
-The frontend and OpenMRS folders currently contain handoff instructions, not implemented applications/configuration. The frontend stack is left to its owner. Keep OpenMRS; do not build a replacement EMR.
+The frontend folder contains handoff instructions. The [OpenMRS configuration pack](openmrs-config/README.md) provides a local synthetic ED workflow fixture, separate identities, live/browser tests and verified metadata mappings; clinical review remains pending. The frontend stack is left to its owner. Keep OpenMRS; do not build a replacement EMR.
 
 Use separate feature branches (for example `codex/examiner` and `codex/doctor-experience`) and small PRs. Coordinate edits to the root manifest, shared plan and event schema; @CrimsonSithria owns schema changes. Do not overwrite each other's work. No Agent Forest.
 
