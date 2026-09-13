@@ -4,4 +4,7 @@ version = "0.1.0"
 description = "Doctor-first emergency simulation examiner around OpenMRS"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["PyYAML>=6.0.2,<7"]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
