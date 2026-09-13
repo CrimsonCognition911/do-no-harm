@@ -12,6 +12,15 @@ the browser carries audio and events, while the trusted BFF creates the
 `gpt-live-1` session with `delegation.type = client`. `OPENAI_API_KEY`, run
 capabilities and the examiner bridge credential remain server-side.
 
+Application contract **0.1 is frozen**. Use these files; do not guess field names:
+
+| Need | Where |
+|---|---|
+| Event envelopes | `contracts/events.schema.json` — also `GET /api/contracts/events` |
+| Action → evidence → voice handshake and sample JSON | `contracts/samples/handshake.json` — also `GET /api/contracts/handshake` |
+| What Live may say | `contracts/voice-update.schema.json` — also `GET /api/contracts/voice-update` and `GET /api/runs/{run_id}/voice` (audio capability) |
+| HTTP routes, tokens, pause acks | `contracts/session-api.md` |
+
 ## What is implemented
 
 - Full-duplex browser WebRTC connection, playback interruption, explicit
@@ -22,11 +31,11 @@ capabilities and the examiner bridge credential remain server-side.
   spoken corrections recorded as intentions.
 - Participant-feed validation against the shared event-contract semantics. Raw
   findings, examiner visibility and unknown future-event types are dropped.
-- Separate display and observed-audio delivery acknowledgments for published
-  clinical updates. Acknowledgment does not claim comprehension.
-- Pause-safe playback: audio is muted/flushed before the BFF submits the
-  run-scoped audio worker acknowledgment. Resume waits for a connected voice
-  session. A disconnect becomes a technical pause, not a clinical penalty.
+- Display acknowledgments for published clinical updates. Spoken delivery remains
+  unconfirmed without event-correlated evidence; playback does not prove comprehension.
+- Pause-safe playback: local media tracks and the peer are closed before the BFF
+  submits the run-scoped audio acknowledgment. Resume waits for a fresh connected
+  voice session. Disconnect stops local voice; it does not pause the backend run.
 - Explicit recording consent. The client keeps audio/transcript context in
   memory for this browser session only and clears it on consent revocation or
   an explicit end.
@@ -117,3 +126,5 @@ Pause, interrupt, and feed failure close the local peer, stop media tracks, deta
 audio, clear pending announcements, and request provider hangup. Reconnect voice
 creates a fresh session once the feed is healthy and the run is running or awaiting
 audio resume. Local voice failure does not itself pause the authoritative run.
+
+Do not infer live provider readiness from the scaffold health endpoint; `/ready` deliberately returns 503.

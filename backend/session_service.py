@@ -6,6 +6,7 @@ from threading import RLock
 from time import monotonic
 from uuid import uuid4
 
+from backend.contracts import project_permitted_voice_update
 from backend.runtime import Run
 
 
@@ -90,6 +91,18 @@ class SessionService:
                         raise APIError(409, "cursor_out_of_range")
                     page = events[after:after + 200]
                     return 200, {**self._snapshot(run), "events": page, "next_cursor": after + len(page)}
+                if parts[1:] == ["voice"]:
+                    if role != "audio":
+                        raise APIError(403, "forbidden")
+                    if query:
+                        raise APIError(422, "unexpected_query")
+                    updates = []
+                    for event in run.events(audience="participant"):
+                        try:
+                            updates.append(project_permitted_voice_update(event))
+                        except ValueError:
+                            continue
+                    return 200, {**self._snapshot(run), "updates": updates}
                 raise APIError(422 if query else 404, "invalid_request")
             if method != "POST" or len(parts) != 2:
                 raise APIError(404, "not_found")
