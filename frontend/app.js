@@ -170,11 +170,18 @@ function disconnectVoice({ clearContext, technicalFault = true }) {
     api("/api/live/hangup", { method: "POST", body: JSON.stringify({ session_id: liveSessionId }) }).catch(() => {});
     liveSessionId = undefined;
   }
-  microphone?.getTracks().forEach((track) => track.stop());
-  channel?.close();
-  peer?.close();
-  elements.audio.srcObject = null;
+  const previousPeer = peer;
+  const previousChannel = channel;
+  const previousMicrophone = microphone;
   peer = channel = microphone = undefined;
+  previousMicrophone?.getTracks().forEach((track) => track.stop());
+  elements.audio.srcObject?.getTracks().forEach((track) => track.stop());
+  elements.audio.pause();
+  elements.audio.muted = true;
+  elements.audio.srcObject = null;
+  previousChannel?.close();
+  previousPeer?.close();
+  elements.start.textContent = "Reconnect voice";
   if (technicalFault) void controller.disconnected();
   else controller.connected = false;
   if (clearContext) controller.clearConversation();
