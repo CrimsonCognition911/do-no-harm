@@ -85,7 +85,7 @@ class FixtureTargetTests(unittest.TestCase):
         publisher = self.load("publish-fixture")
         manifest = {"base_url": "http://127.0.0.1:8090/openmrs", "seed": {"patient_uuid": "new-patient", "visit_uuid": "new-visit"},
                     "encounter_types": {"Reassessment": "type"}, "locations": {"Observation": "location"},
-                    "identities": {"simulation": {"provider_uuid": "provider"}}, "encounter_role": "role",
+                    "identities": {"simulation": {"provider_uuid": "provider", "user_uuid": "simulation-user"}}, "encounter_role": "role",
                     "numeric_concepts": {key: {"uuid": key} for key in ("temperature", "haemoglobin")}}
         writes = []
         class Client:

@@ -4,8 +4,10 @@ import json
 import os
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 from urllib.error import HTTPError
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -68,7 +70,7 @@ class LiveEDTests(unittest.TestCase):
         case = FrozenCase(fixture, fixture=True)
         now = [0.0]
         concept = self.manifest["concepts"]["reassessment"]
-        run_id = "dnh06-" + self.manifest["run_key"]
+        run_id = "dnh06-live-" + str(uuid4())
         run = Run(run_id, resource_refs={concept}, clock=lambda: now[0])
         run.start(expected_version=1)
         now[0] = 6.0
@@ -85,27 +87,38 @@ class LiveEDTests(unittest.TestCase):
             "encounter_type_uuid": self.manifest["encounter_types"]["Reassessment"],
             "location_uuid": self.manifest["locations"]["Observation"],
             "provider_uuid": self.manifest["identities"]["simulation"]["provider_uuid"],
+            "simulation_user_uuid": self.manifest["identities"]["simulation"]["user_uuid"],
             "encounter_role_uuid": self.manifest["encounter_role"],
             "concept_uuids": sorted(self.manifest["concepts"].values()),
         }
-        executor = OpenMRSExecutor(
-            run,
-            planner,
-            self.clients["simulation"],
-            binding=binding,
-            ledger_path=RUNTIME / "dnh06-publications.sqlite3",
-        )
+        with TemporaryDirectory() as directory:
+            executor = OpenMRSExecutor(
+                run,
+                planner,
+                self.clients["simulation"],
+                binding=binding,
+                ledger_path=Path(directory) / "dnh06-publications.sqlite3",
+            )
 
-        first = executor.publish_due("unresolved-consequence", expected_version=1)
-        retry = executor.publish_due("unresolved-consequence", expected_version=1)
-        read = self.clients["simulation"].request(
-            "GET", f"encounter/{first['encounter_uuid']}?v=full"
-        )
+            first = executor.publish_due("unresolved-consequence", expected_version=1)
+            retry = executor.publish_due("unresolved-consequence", expected_version=1)
+            read = self.clients["simulation"].request(
+                "GET", f"encounter/{first['encounter_uuid']}?v=full"
+            )
 
         self.assertEqual(retry, first)
         self.assertEqual(read["patient"]["uuid"], binding["patient_uuid"])
         self.assertEqual(read["visit"]["uuid"], binding["visit_uuid"])
-        self.assertEqual(len([obs for obs in read["obs"] if obs.get("comment") == first["marker"]]), 1)
+        self.assertEqual(read["auditInfo"]["creator"]["uuid"], binding["simulation_user_uuid"])
+        self.assertTrue(any(
+            item["provider"]["uuid"] == binding["provider_uuid"]
+            and item["encounterRole"]["uuid"] == binding["encounter_role_uuid"]
+            for item in read["encounterProviders"]
+        ))
+        matching = [obs for obs in read["obs"] if obs.get("comment") == first["marker"]]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["concept"]["uuid"], first["resource_ref"])
+        self.assertEqual(matching[0]["value"], first["summary"])
 
     def test_review_reads_but_cannot_create_update_or_delete(self):
         m = self.manifest

@@ -23,6 +23,7 @@ class FakeOpenMRS:
         self.writes = 0
         self.fail_after_write = False
         self.wrong_visit_on_read = False
+        self.wrong_creator_on_read = False
 
     def all(self, resource):
         if resource != "encounter?patient=patient-1":
@@ -46,6 +47,7 @@ class FakeOpenMRS:
                 "visit": {"uuid": body["visit"]},
                 "encounterType": {"uuid": body["encounterType"]},
                 "location": {"uuid": body["location"]},
+                "auditInfo": {"creator": {"uuid": "simulation-user"}},
                 "encounterProviders": [{
                     "provider": {"uuid": body["encounterProviders"][0]["provider"]},
                     "encounterRole": {"uuid": body["encounterProviders"][0]["encounterRole"]},
@@ -68,6 +70,8 @@ class FakeOpenMRS:
             result = json.loads(json.dumps(match))
             if self.wrong_visit_on_read:
                 result["visit"]["uuid"] = "other-visit"
+            if self.wrong_creator_on_read:
+                result["auditInfo"]["creator"]["uuid"] = "doctor-user"
             return result
         raise AssertionError(f"unexpected request: {method} {path}")
 
@@ -108,6 +112,7 @@ class ExecutionTests(unittest.TestCase):
             "encounter_type_uuid": "reassessment-type",
             "location_uuid": "observation-location",
             "provider_uuid": "simulation-provider",
+            "simulation_user_uuid": "simulation-user",
             "encounter_role_uuid": "clinician-role",
             "concept_uuids": ["concept-state", "concept-result", "concept-challenge"],
         }
@@ -196,6 +201,13 @@ class ExecutionTests(unittest.TestCase):
 
     def test_wrong_visit_readback_fails_closed_and_pauses(self):
         self.client.wrong_visit_on_read = True
+        with self.assertRaisesRegex(self.execution.ExternalPublicationError, "read-back"):
+            self.executor().publish_due("unresolved-consequence", expected_version=1)
+        self.assertEqual(self.run.state, "pause_requested")
+        self.assertFalse(any(event["type"] == "clinical_update" for event in self.run.events()))
+
+    def test_wrong_creator_readback_fails_closed_and_pauses(self):
+        self.client.wrong_creator_on_read = True
         with self.assertRaisesRegex(self.execution.ExternalPublicationError, "read-back"):
             self.executor().publish_due("unresolved-consequence", expected_version=1)
         self.assertEqual(self.run.state, "pause_requested")

@@ -78,6 +78,7 @@ class RunnerFactory:
             "encounter_type_uuid": manifest["encounter_types"]["Reassessment"],
             "location_uuid": manifest["locations"]["Observation"],
             "provider_uuid": manifest["identities"]["simulation"]["provider_uuid"],
+            "simulation_user_uuid": manifest["identities"]["simulation"]["user_uuid"],
             "encounter_role_uuid": manifest["encounter_role"], "concept_uuids": sorted(set(bindings.values())),
         }
         # Visit identity rather than caller request identity prevents accidental

@@ -77,6 +77,12 @@ class EDConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_live_gate_forces_a_fresh_publication_attempt(self):
+        source = (Path(__file__).resolve().parents[1] / "openmrs-config" / "test_live.py").read_text()
+        self.assertIn("uuid4()", source)
+        self.assertIn("TemporaryDirectory", source)
+        self.assertIn("simulation_user_uuid", source)
+
 
 if __name__ == "__main__":
     unittest.main()

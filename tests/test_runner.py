@@ -26,7 +26,7 @@ class RunnerTests(unittest.TestCase):
                 "seed": {"patient_uuid": "patient-1", "visit_uuid": "visit-1", "fixture_only": True},
                 "concepts": {"reassessment": "concept-state"},
                 "encounter_types": {"Reassessment": "reassessment-type"}, "locations": {"Observation": "observation-location"},
-                "identities": {"simulation": {"provider_uuid": "simulation-provider"}}, "encounter_role": "clinician-role"}}
+                "identities": {"simulation": {"provider_uuid": "simulation-provider", "user_uuid": "simulation-user"}}, "encounter_role": "clinician-role"}}
         self.service = SessionService("x" * 32, clock=lambda: self.now, runner_factory=self.factory)
         _, self.session = self.service.handle("POST", [], {}, "x" * 32, {"request_id": "approved-run", "mode": "coached"})
         self.run_id = self.session["run_id"]
