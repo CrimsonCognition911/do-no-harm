@@ -224,9 +224,16 @@ elements.interrupt.addEventListener("click", () => controller.technicalPause());
 elements.recordCorrection.addEventListener("click", async () => {
   const value = elements.correction.value.trim();
   if (!controller.addCorrection(value)) return;
+  const eventId = `speech-correction:${crypto.randomUUID()}`;
   await api("/api/actions", { method: "POST", body: JSON.stringify({
-    event_id: `speech-correction:${crypto.randomUUID()}`, execution_version: controller.executionVersion, action: value, kind: "speech",
+    event_id: eventId, execution_version: controller.executionVersion, action: value, kind: "speech",
   }) });
+  sendLive({
+    type: "session.thinking.append",
+    event_id: eventId,
+    delegation_id: null,
+    content: "The doctor corrected the prior statement. Do not rely on it; delegate to the client for current context.",
+  });
   elements.correction.value = "";
 });
 window.addEventListener("dnh:chart-interaction", ({ detail }) => {

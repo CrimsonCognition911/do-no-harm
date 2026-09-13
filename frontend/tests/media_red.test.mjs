@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 async function browserHarness() {
-  const calls = { requests: [], stopped: 0, closed: 0, played: 0 };
+  const calls = { requests: [], liveEvents: [], stopped: 0, closed: 0, played: 0 };
   const elements = new Map();
   const track = () => ({ stop: () => calls.stopped++ });
   const stream = () => ({ getTracks: () => [track()] });
@@ -18,7 +18,7 @@ async function browserHarness() {
   let peer;
   class Peer {
     constructor() { peer = this; this.listeners = {}; this.iceGatheringState = "complete"; }
-    createDataChannel() { this.channel = { readyState: "open", listeners: {}, send() {}, close() {},
+    createDataChannel() { this.channel = { readyState: "open", listeners: {}, send(value) { calls.liveEvents.push(JSON.parse(value)); }, close() {},
       addEventListener(name, fn) { this.listeners[name] = fn; } }; return this.channel; }
     addEventListener(name, fn) { this.listeners[name] = fn; }
     addTrack() {}
@@ -103,3 +103,17 @@ test("browser media progress never submits a spoken receipt", async () => {
   assert.equal(h.calls.requests.some((item) => item.path === "/api/delivery" && item.body.stage === "spoken"), false);
 });
 
+test("accepted typed correction is appended to the active Live session", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  h.elements.get("#correction").value = "I meant review the potassium order";
+  await h.elements.get("#record-correction").listeners.click();
+
+  assert.ok(h.calls.requests.some((item) => item.path === "/api/actions" && item.body.action === "I meant review the potassium order"));
+  assert.deepEqual(h.calls.liveEvents.at(-1), {
+    type: "session.thinking.append",
+    event_id: "speech-correction:test-id",
+    delegation_id: null,
+    content: "The doctor corrected the prior statement. Do not rely on it; delegate to the client for current context.",
+  });
+});
