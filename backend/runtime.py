@@ -6,6 +6,7 @@ commands before invoking them. Acknowledgments assert real adapter quiescence;
 this module neither stops an external write nor controls an audio device itself.
 """
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from threading import RLock
 from time import monotonic
@@ -27,6 +28,7 @@ class Run:
             raise ValueError("Invalid resource reference")
         self._run_id, self._mode, self._clock = run_id, mode, clock
         self._lock = RLock()
+        self._execution_gate = RLock()
         self._state, self._version, self._assisted = "created", 1, False
         self._elapsed, self._started_at = 0.0, None
         self._events, self._by_id, self._requests = [], {}, {}
@@ -98,25 +100,40 @@ class Run:
             self._transition("running")
 
     def request_pause(self, *, expected_version):
-        with self._lock:
-            self._check(expected_version, {"running"})
-            self._elapsed += self._clock() - self._started_at
-            self._started_at = None
-            self._version += 1
-            self._acks.clear()
-            self._transition("pause_requested")
+        # Wait for a reserved external write to reconcile before exposing pause.
+        # Once this returns, no current-version executor can dispatch a late write.
+        with self._execution_gate:
+            with self._lock:
+                self._request_pause_locked(expected_version)
+
+    def _request_pause_locked(self, expected_version):
+        self._check(expected_version, {"running"})
+        self._elapsed += self._clock() - self._started_at
+        self._started_at = None
+        self._version += 1
+        self._acks.clear()
+        self._transition("pause_requested")
+
+    @contextmanager
+    def execution_guard(self, *, expected_version):
+        """Reserve current-version execution against the pause barrier."""
+        with self._execution_gate:
+            with self._lock:
+                self._check(expected_version, {"running"})
+            yield
 
     def request_technical_pause(self, *, expected_version):
         """Audio faults may stop a run, but cannot coach, resume or acknowledge execution."""
-        with self._lock:
-            self._check(expected_version, {"created", "running", "pause_requested", "paused",
-                                           "coaching", "resume_requested", "debrief", "ended", "failed"})
-            if self._state == "running":
-                self.request_pause(expected_version=expected_version)
-            elif self._state == "resume_requested":
-                self._version += 1
-                self._acks.clear()
-                self._transition("pause_requested")
+        with self._execution_gate:
+            with self._lock:
+                self._check(expected_version, {"created", "running", "pause_requested", "paused",
+                                               "coaching", "resume_requested", "debrief", "ended", "failed"})
+                if self._state == "running":
+                    self._request_pause_locked(expected_version)
+                elif self._state == "resume_requested":
+                    self._version += 1
+                    self._acks.clear()
+                    self._transition("pause_requested")
 
     def acknowledge_pause(self, component, *, expected_version):
         """Execution must drain/reconcile writes; audio must stop/flush playback."""
