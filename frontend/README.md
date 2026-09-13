@@ -12,6 +12,15 @@ the browser carries audio and events, while the trusted BFF creates the
 `gpt-live-1` session with `delegation.type = client`. `OPENAI_API_KEY`, run
 capabilities and the examiner bridge credential remain server-side.
 
+Application contract **0.1 is frozen**. Use these files; do not guess field names:
+
+| Need | Where |
+|---|---|
+| Event envelopes | `contracts/events.schema.json` — also `GET /api/contracts/events` |
+| Action → evidence → voice handshake and sample JSON | `contracts/samples/handshake.json` — also `GET /api/contracts/handshake` |
+| What Live may say | `contracts/voice-update.schema.json` — also `GET /api/contracts/voice-update` and `GET /api/runs/{run_id}/voice` (audio capability) |
+| HTTP routes, tokens, pause acks | `contracts/session-api.md` |
+
 ## What is implemented
 
 - Full-duplex browser WebRTC connection, playback interruption, explicit

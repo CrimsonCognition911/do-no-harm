@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CrimsonCognition911/do-no-harm/contracts/events/0.1",
-  "title": "DO NO HARM draft application event envelope",
-  "description": "Draft 0.1 for team review. This is not an OpenAI API schema. Validation does not authorize a source, confirm clinical execution, or implement delivery/transition rules.",
+  "title": "DO NO HARM application event envelope",
+  "description": "Frozen application contract 0.1. Field names are stable for frontend and backend. This is not an OpenAI API schema. Validation does not authorize a source, confirm clinical execution, or implement delivery/transition rules.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "type", "event_id", "run_id", "actor", "occurred_at", "simulation_time_ms", "execution_version", "evidence_ids", "visibility", "payload"],

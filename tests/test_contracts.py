@@ -50,6 +50,27 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.validate(action_event(), "anonymous")
 
+    def test_missing_run_id_is_rejected(self):
+        event = action_event()
+        del event["run_id"]
+        with self.assertRaises(ValueError):
+            self.validate(event)
+
+    def test_actor_type_confusion_is_rejected(self):
+        mismatches = [
+            ("doctor_action", "examiner", {"action": "x", "phase": "observed", "source": "browser"}, "browser"),
+            ("clinical_update", "doctor", {"scenario_event_id": "lab-1", "summary": "Result", "resource_ref": "obs-1", "delivery_stage": "published"}, "simulation_service"),
+            ("evaluation_finding", "doctor", {"criterion_id": "c", "outcome": "concern", "rationale": "x", "requires_clinician_review": True}, "examiner"),
+            ("session_state", "examiner", {"state": "paused", "mode": "coached", "assisted": False}, "simulation_service"),
+        ]
+        for kind, actor, payload, producer in mismatches:
+            with self.subTest(kind=kind, actor=actor), self.assertRaises(ValueError):
+                event = action_event()
+                event.update(type=kind, actor=actor, payload=payload)
+                if kind == "evaluation_finding":
+                    event["visibility"] = "examiner"
+                self.validate(event, producer)
+
     def test_bad_envelopes_are_rejected(self):
         changes = [
             {"extra": 1}, {"schema_version": "0.2"}, {"actor": "examiner"},

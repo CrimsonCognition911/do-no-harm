@@ -4,7 +4,7 @@ Live emergency-medicine simulation and coaching around **OpenMRS 3**. The doctor
 
 ## Current status
 
-This is an **offline integration foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side GPT-Live-1 WebRTC/BFF interface tested with non-clinical fixtures. OpenMRS, Agents API, provider-backed Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and their tests make no provider calls.
+This is an **offline integration foundation**, not a working clinical evaluator. Implemented: frozen application-event contract 0.1, sample handshake messages, a sanitized permitted-voice projection, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side WebRTC/BFF interface tested with fixtures. OpenMRS, Agents API, Live audio, scored clinical use and CUA are **not connected yet**. No OpenAI API key is required for the offline components and they make no provider calls.
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
@@ -27,6 +27,8 @@ In another terminal:
 ```sh
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/contracts/events
+curl http://127.0.0.1:8000/api/contracts/handshake
+curl http://127.0.0.1:8000/api/contracts/voice-update
 python3 -m unittest discover -s tests -v
 python3 -m backend.demo
 ```
@@ -44,27 +46,27 @@ The frontend folder contains the doctor sidecar and its local BFF setup instruct
 
 Use separate feature branches (for example `codex/examiner` and `codex/doctor-experience`) and small PRs. Coordinate edits to the root manifest, shared plan and event schema; @CrimsonSithria owns schema changes. Do not overwrite each other's work. No Agent Forest.
 
-## Shared contract: draft 0.1
+## Shared contract: 0.1 frozen
 
-`contracts/events.schema.json` is the first application-event draft for joint review. It is not an OpenAI API schema. Four message types share run/event identity, actor, wall-clock/simulation time, execution version, evidence IDs and visibility:
+`contracts/events.schema.json` is the agreed application-event contract. Field names are stable. It is not an OpenAI API schema. Canonical samples and the action → evidence → voice walkthrough are in [`contracts/samples/handshake.json`](contracts/samples/handshake.json). Four message types share run/event identity, actor, wall-clock/simulation time, execution version, evidence IDs and visibility:
 
 - `doctor_action`: browser observation or speech intent, distinct from backend-confirmed clinical action.
 - `clinical_update`: a published case event or subsequent display/speech acknowledgment. Each stage is separately recorded; an announcement does not prove understanding.
-- `evaluation_finding`: examiner-only provisional judgment. A separately authorized coaching/voice projection still needs implementation; do not send the raw finding to the doctor's assessment UI.
+- `evaluation_finding`: examiner-only provisional judgment. Do not send the raw finding to the doctor's assessment UI or Live.
 - `session_state`: a server-owned state snapshot. The internal run controller enforces transition legality, version checks and assistance rules; real adapters still need to implement quiescence.
 
-The schema is served for frontend development. `backend/contracts.py` validates draft 0.1 shape and checks source against a **trusted adapter-supplied producer**. `backend/runtime.py` constructs event identity context/timestamps, checks registered resource references and same-run evidence membership, deduplicates exact retries, rejects conflicting IDs, and filters participant snapshots. Automated findings remain provisional. These checks do not establish clinical evidence sufficiency or prove that an OpenMRS write happened.
+The schema, handshake samples and voice-update schema are served for frontend development. `backend/contracts.py` validates contract 0.1 shape, checks source against a **trusted adapter-supplied producer**, and projects `permitted_voice_update` packets. `GET /api/runs/{run_id}/voice` (audio capability) returns only those packets. `backend/runtime.py` constructs event identity context/timestamps, checks registered resource references and same-run evidence membership, deduplicates exact retries, rejects conflicting IDs, and filters participant snapshots. Automated findings remain provisional. These checks do not establish clinical evidence sufficiency or prove that an OpenMRS write happened.
 
 `backend/session_service.py` now authenticates local, expiring run-scoped capabilities for doctor, examiner, execution and audio roles. It exposes action ingestion, examiner findings, controller commands and polling replay through the [documented HTTP contract](contracts/session-api.md). The HTTP layer never accepts a client-selected `producer`, `actor`, visibility, resource allowlist or event-feed audience. Only non-clinical fixture sessions can be created; real patient bindings are unavailable. Production login/consent, provider delegation, streaming, durable persistence and real clinical adapters are still pending. Never directly map an arbitrary request body to `Run.record()` or `Run.events()`.
 
-For local frontend development, use a server-side BFF that authenticates its own browser user and maps them to the assigned run. Keep privileged capabilities out of doctor-facing handlers. The BFF makes controlled server-to-server requests to `http://127.0.0.1:8000`; direct browser Origin headers are rejected and no wildcard CORS policy is enabled. Review the handoff together under #1 before wiring live integrations.
+For local frontend development, use a server-side BFF that authenticates its own browser user and maps them to the assigned run. Keep privileged capabilities out of doctor-facing handlers. The BFF makes controlled server-to-server requests to `http://127.0.0.1:8000`; direct browser Origin headers are rejected and no wildcard CORS policy is enabled. Use the frozen #1 samples before wiring live integrations.
 
 ## Safety and next work
 
 - Synthetic patients only. No production OpenMRS access or real patient material.
 - Keep keys in ignored local configuration; never put them in the frontend, issues, screenshots or commits. `.env`/`.env.local` are not loaded by this scaffold.
 - Do not claim clinical validation, certification, provider access or live integration from passing scaffold tests.
-- Next: finish #1 with validated event handling, sample messages, transport/session boundaries and collaborator review; then build the case runner and examiner. Real API checks wait for secure key setup.
+- Next: build the Astra/Live adapters (#4) and durable OpenMRS publication (#6). Real API checks wait for secure key setup.
 
 ## Offline run controller
 
@@ -75,8 +77,8 @@ For local frontend development, use a server-side BFF that authenticates its own
 - `request_pause()` immediately gates new action/update receipts, freezes simulated time and advances the execution version. Both `execution` and `audio` must acknowledge the new version before the run becomes `paused`. The execution adapter must stop scheduling and reconcile/drain in-flight writes; the audio adapter must stop/flush playback. The controller cannot do those external operations itself. Missing acknowledgments leave it safely blocked; timeout/recovery is not implemented yet.
 - `begin_coaching()` requires acknowledged pause and permanently marks the attempt assisted. Only then is `review_allowed` true. Assessment mode moves to debrief and cannot resume that attempt. Coached mode can request resume; adapters must first finish teach-back and revoke/drain read-only CUA access. New-version execution/audio readiness acknowledgments restart time, excluding the paused interval.
 - New stale-version events fail. An exact retry of an already accepted event returns its original receipt without executing or appending anything again.
-- Raw findings stay examiner-only even during coaching. A separately authorized, participant-safe coaching projection still needs implementation; do not send the examiner ledger to Live or the doctor UI.
+- Raw findings stay examiner-only even during coaching. Live may speak only `permitted_voice_update` packets from `GET /api/runs/{run_id}/voice`. Do not send the examiner ledger to Live or the doctor UI.
 
 `backend/adaptation.py` adds frozen case/rubric/policy hashes, bounded optional challenge selection, confirmed-action state preconditions, stale-work rejection and independent due-consequence planning. `contracts/adaptive-fixture.json` supplies two scripted performance paths for engineering tests, **not** a reviewed emergency case. Plans are labelled `planned_not_published`; there is no OpenMRS execution. See the handoff for the review gate and integration boundaries.
 
-This completes the authored-and-reviewed case package in #3 and advances #1 plus the control-plane portion of #6. Next backend work is durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.
+This completes the authored-and-reviewed case package in #3 and the shared application contract in #1. The control-plane portion of #6 exists offline. Next backend work is durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.

@@ -1,0 +1,224 @@
+{
+  "contract_version": "0.1",
+  "status": "frozen",
+  "owner": "CrimsonSithria",
+  "frontend_reviewer": "tijoseymathew",
+  "note": "Canonical field names for frontend action to backend evidence to permitted voice update. Tokens below are placeholders, not credentials. Live/Agents provider wiring remains DNH-04/05.",
+  "events": {
+    "doctor_action": {
+      "schema_version": "0.1",
+      "type": "doctor_action",
+      "event_id": "action-open-chart",
+      "run_id": "run-example-1",
+      "actor": "doctor",
+      "occurred_at": "2026-09-13T05:00:00Z",
+      "simulation_time_ms": 12000,
+      "execution_version": 1,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "action": "open chart",
+        "phase": "observed",
+        "source": "browser"
+      }
+    },
+    "clinical_update": {
+      "schema_version": "0.1",
+      "type": "clinical_update",
+      "event_id": "update-ecg-published",
+      "run_id": "run-example-1",
+      "actor": "simulation_service",
+      "occurred_at": "2026-09-13T05:00:08Z",
+      "simulation_time_ms": 20000,
+      "execution_version": 1,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "scenario_event_id": "diagnostic_ecg",
+        "summary": "A diagnostic ECG report is available in the chart.",
+        "resource_ref": "synthetic-ecg-1",
+        "delivery_stage": "published"
+      }
+    },
+    "evaluation_finding": {
+      "schema_version": "0.1",
+      "type": "evaluation_finding",
+      "event_id": "finding-reperfusion",
+      "run_id": "run-example-1",
+      "actor": "examiner",
+      "occurred_at": "2026-09-13T05:00:12Z",
+      "simulation_time_ms": 24000,
+      "execution_version": 1,
+      "evidence_ids": ["action-open-chart"],
+      "visibility": "examiner",
+      "payload": {
+        "criterion_id": "mi.reperfusion_escalation",
+        "outcome": "concern",
+        "rationale": "Examiner-only provisional note. Do not send to Live or the doctor UI.",
+        "requires_clinician_review": true
+      }
+    },
+    "session_state": {
+      "schema_version": "0.1",
+      "type": "session_state",
+      "event_id": "state-paused",
+      "run_id": "run-example-1",
+      "actor": "simulation_service",
+      "occurred_at": "2026-09-13T05:00:15Z",
+      "simulation_time_ms": 24000,
+      "execution_version": 2,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "state": "paused",
+        "mode": "coached",
+        "assisted": false
+      }
+    }
+  },
+  "examiner_only_event_types": ["evaluation_finding"],
+  "participant_event_types": ["doctor_action", "clinical_update", "session_state"],
+  "unreleased_events": [
+    {
+      "scenario_event_id": "troponin_result",
+      "summary": "Unreleased authored laboratory result.",
+      "resource_ref": "synthetic-troponin-1",
+      "delivery_stage": "authored_not_published"
+    }
+  ],
+  "participant_feed": [
+    {
+      "schema_version": "0.1",
+      "type": "doctor_action",
+      "event_id": "action-open-chart",
+      "run_id": "run-example-1",
+      "actor": "doctor",
+      "occurred_at": "2026-09-13T05:00:00Z",
+      "simulation_time_ms": 12000,
+      "execution_version": 1,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "action": "open chart",
+        "phase": "observed",
+        "source": "browser"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "type": "clinical_update",
+      "event_id": "update-ecg-published",
+      "run_id": "run-example-1",
+      "actor": "simulation_service",
+      "occurred_at": "2026-09-13T05:00:08Z",
+      "simulation_time_ms": 20000,
+      "execution_version": 1,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "scenario_event_id": "diagnostic_ecg",
+        "summary": "A diagnostic ECG report is available in the chart.",
+        "resource_ref": "synthetic-ecg-1",
+        "delivery_stage": "published"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "type": "session_state",
+      "event_id": "state-paused",
+      "run_id": "run-example-1",
+      "actor": "simulation_service",
+      "occurred_at": "2026-09-13T05:00:15Z",
+      "simulation_time_ms": 24000,
+      "execution_version": 2,
+      "evidence_ids": [],
+      "visibility": "participant",
+      "payload": {
+        "state": "paused",
+        "mode": "coached",
+        "assisted": false
+      }
+    }
+  ],
+  "permitted_voice_updates": [
+    {
+      "schema_version": "0.1",
+      "kind": "permitted_voice_update",
+      "run_id": "run-example-1",
+      "execution_version": 1,
+      "simulation_time_ms": 20000,
+      "source_event_id": "update-ecg-published",
+      "say": "A diagnostic ECG report is available in the chart.",
+      "evidence_ids": []
+    },
+    {
+      "schema_version": "0.1",
+      "kind": "permitted_voice_update",
+      "run_id": "run-example-1",
+      "execution_version": 2,
+      "simulation_time_ms": 24000,
+      "source_event_id": "state-paused",
+      "say": "Simulation paused. Wait for examiner instructions.",
+      "evidence_ids": []
+    }
+  ],
+  "handshake": [
+    {
+      "step": 1,
+      "from": "operator",
+      "route": "POST /api/runs",
+      "request": {"request_id": "create-1", "mode": "coached"},
+      "response": {
+        "run_id": "run-example-1",
+        "environment": "offline_fixture",
+        "state": "created",
+        "execution_version": 1,
+        "tokens": {
+          "doctor": "<doctor-capability>",
+          "examiner": "<examiner-capability>",
+          "execution": "<execution-capability>",
+          "audio": "<audio-capability>"
+        }
+      }
+    },
+    {
+      "step": 2,
+      "from": "examiner",
+      "route": "POST /api/runs/{run_id}/commands",
+      "request": {"request_id": "start-1", "command": "start", "execution_version": 1}
+    },
+    {
+      "step": 3,
+      "from": "doctor_bff",
+      "route": "POST /api/runs/{run_id}/actions",
+      "request": {
+        "event_id": "action-open-chart",
+        "execution_version": 1,
+        "payload": {"action": "open chart", "phase": "observed", "source": "browser"}
+      },
+      "note": "Server envelopes run_id, actor, timestamps and visibility. A UI click is not confirmed clinical execution."
+    },
+    {
+      "step": 4,
+      "from": "simulation_service",
+      "note": "A trusted adapter records a published clinical_update. HTTP clients cannot choose producer, actor or visibility."
+    },
+    {
+      "step": 5,
+      "from": "audio_or_live_adapter",
+      "route": "GET /api/runs/{run_id}/voice",
+      "capability": "audio",
+      "response_item": {
+        "schema_version": "0.1",
+        "kind": "permitted_voice_update",
+        "run_id": "run-example-1",
+        "execution_version": 1,
+        "simulation_time_ms": 20000,
+        "source_event_id": "update-ecg-published",
+        "say": "A diagnostic ECG report is available in the chart.",
+        "evidence_ids": []
+      },
+      "note": "Speak only these packets. Do not narrate UI observations, findings, hidden rubric or authored-but-unpublished events."
+    }
+  ]
+}
