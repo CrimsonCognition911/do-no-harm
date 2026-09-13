@@ -122,7 +122,7 @@ class OpenMRSExecutor:
     _BINDING_FIELDS = {
         "fixture_only", "run_id", "patient_uuid", "visit_uuid",
         "encounter_type_uuid", "location_uuid", "provider_uuid",
-        "encounter_role_uuid", "concept_uuids",
+        "simulation_user_uuid", "encounter_role_uuid", "concept_uuids",
     }
     _FAILURE_COMPONENTS = {"openmrs", "examiner_model", "voice_model", "voice_transport"}
 
@@ -185,6 +185,11 @@ class OpenMRSExecutor:
                 "resource_ref": plan["resource_ref"],
                 "patient_uuid": self._binding["patient_uuid"],
                 "visit_uuid": self._binding["visit_uuid"],
+                "encounter_type_uuid": self._binding["encounter_type_uuid"],
+                "location_uuid": self._binding["location_uuid"],
+                "provider_uuid": self._binding["provider_uuid"],
+                "simulation_user_uuid": self._binding["simulation_user_uuid"],
+                "encounter_role_uuid": self._binding["encounter_role_uuid"],
                 "case_hash": plan["case_hash"], "rubric_hash": plan["rubric_hash"],
                 "policy_hash": plan["policy_hash"],
             }
@@ -344,6 +349,11 @@ class OpenMRSExecutor:
         identity = {"run_id": self._run_id, "scenario_event_id": event_id,
                     "summary": event["summary"], "resource_ref": receipt["resource_ref"],
                     "patient_uuid": self._binding["patient_uuid"], "visit_uuid": self._binding["visit_uuid"],
+                    "encounter_type_uuid": self._binding["encounter_type_uuid"],
+                    "location_uuid": self._binding["location_uuid"],
+                    "provider_uuid": self._binding["provider_uuid"],
+                    "simulation_user_uuid": self._binding["simulation_user_uuid"],
+                    "encounter_role_uuid": self._binding["encounter_role_uuid"],
                     "case_hash": self._planner._case.case_hash, "rubric_hash": self._planner._case.rubric_hash,
                     "policy_hash": self._planner._case.policy_hash}
         if receipt["marker"] != "DNH06:" + sha256(_canonical(identity).encode()).hexdigest():
@@ -380,6 +390,8 @@ class OpenMRSExecutor:
             and ref("visit") == self._binding["visit_uuid"]
             and ref("encounterType") == self._binding["encounter_type_uuid"]
             and ref("location") == self._binding["location_uuid"]
+            and encounter.get("auditInfo", {}).get("creator", {}).get("uuid")
+            == self._binding["simulation_user_uuid"]
         )
         if not isinstance(encounter, dict):
             raise ExternalPublicationError("Invalid OpenMRS read-back")
