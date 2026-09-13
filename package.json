@@ -1,0 +1,10 @@
+{
+  "name": "do-no-harm-doctor-interface",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:green": "node --test frontend/tests/voice_controller_green.test.mjs",
+    "test:red": "node --test frontend/tests/voice_controller_red.test.mjs",
+    "test": "node --test frontend/tests/*.test.mjs"
+  }
+}
