@@ -1,7 +1,8 @@
 # Local session API: frontend/backend handoff
 
-Version: application events `0.1`; compiled fixture `dnh.compiled-case/0.1`.
+Version: application events `0.1` (**frozen**); voice projection `0.1`; compiled fixture `dnh.compiled-case/0.1`.
 Owner: @CrimsonSithria; frontend integration/review: @tijoseymathew.
+Canonical samples: [`samples/handshake.json`](samples/handshake.json). Do not invent field names.
 
 This is a **loopback-only, synthetic fixture API**. It records observations and
 exercises the run controller. It does not create provider sessions, evaluate a
@@ -47,6 +48,7 @@ are rejected. IDs below are illustrative, not live credentials.
 | `POST /api/runs` | Operator | `{ "request_id": "create-1", "mode": "coached" }`; `mode` may also be `assessment`. Returns 201 with run snapshot plus separate `tokens.doctor`, `tokens.examiner`, `tokens.execution`, `tokens.audio` and `expires_in_seconds`. |
 | `GET /api/runs/{run_id}` | Any capability belonging to that run | Snapshot: `run_id`, `instance_id`, `environment`, `state`, `execution_version`, `simulation_time_ms`, `assisted`, `review_allowed`. No tokens or hidden findings. |
 | `GET /api/runs/{run_id}/events?after=0` | Any run capability | Snapshot plus `events`, `next_cursor`; up to 200 events. Examiner gets its ledger; all other roles get participant-visible events only. |
+| `GET /api/runs/{run_id}/voice` | Audio | Snapshot plus `updates`: permitted voice packets only. UI observations, findings, hidden rubric and unpublished events are omitted. |
 | `POST /api/runs/{run_id}/actions` | Doctor | `event_id`, `execution_version`, `payload`. Browser source permits only `observed`; speech source permits only `intent`. Returns the server-enveloped event. |
 | `POST /api/runs/{run_id}/findings` | Examiner | `event_id`, `execution_version`, `evidence_ids`, `payload` matching the finding schema. Returns an examiner-only provisional finding. |
 | `POST /api/runs/{run_id}/commands` | Examiner | `request_id`, `execution_version`, `command`: `start`, `pause`, `coach`, `resume`, `end`. Returns a snapshot receipt. |
@@ -82,12 +84,15 @@ bind the frozen rubric and establish sufficient evidence before submitting it.
    visibility and evidence identity. A UI click does **not** establish that an
    order was submitted or a treatment administered. Backend-confirmed actions
    require the future controlled OpenMRS adapter, not a doctor JSON flag.
-5. The voice adapter polls with its audio capability. Only participant-visible
-   events are returned; hidden criteria/findings never enter that feed. It must
-   select appropriate grounded content rather than narrating every UI action.
-   This supplies application context, **not yet an implemented GPT-Live session
-   update or client-delegation bridge**. Actual provider messages and delivery
-   acknowledgments remain part of #4/#5.
+5. The voice adapter calls `GET /api/runs/{run_id}/voice` with the **audio**
+   capability. The response `updates` array is the only application payload
+   Live may speak. Each item matches [`voice-update.schema.json`](voice-update.schema.json):
+   `kind=permitted_voice_update`, `say`, `source_event_id`, run/version/time.
+   UI observations are not spoken. Findings, criterion IDs, rationales and
+   authored-but-unpublished scenario events never appear in this feed.
+   `project_permitted_voice_update()` is the same function the HTTP route uses.
+   This is the application handshake, **not** a GPT-Live session or
+   client-delegation provider call. Those remain #4/#5.
 
 ## Pause, coaching and resume
 
@@ -172,7 +177,9 @@ Planner proposals/audit are examiner-only data and must never be passed wholesal
 to Live or the participant feed. Both transport and planner currently remain
 offline components; wiring them to reviewed cases and OpenMRS is remaining #6 work.
 
-No issue is closed by these fixtures. #1 still needs collaborator agreement and
-provider/delegation lifecycle wiring; #3 now has a [user-approved MI authoring draft](../cases/stemi/review.json)
-but still needs its release checks and runtime compilation; #4 needs verified API access and real provider proof; #6 needs verified
-OpenMRS publication, durable evidence and operational failure handling.
+#1 is the frozen application contract: event schema, session routes, sample
+messages and the permitted-voice projection. Provider Live/Agents sessions
+remain #4/#5. #3 still needs its release checks and runtime compilation; #6
+needs verified OpenMRS publication, durable evidence and operational failure
+handling. `contracts/adaptive-fixture.json` stays an examiner-side engineering
+fixture and is not served to clients.
