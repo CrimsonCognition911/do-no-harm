@@ -135,6 +135,27 @@ class SessionService:
                 if not isinstance(command, str) or command not in commands:
                     raise APIError(422, "unsupported_command")
                 return self._command(entry, role, route, body, commands[command])
+            if route == "technical-pause":
+                if role != "audio":
+                    raise APIError(403, "forbidden")
+                fields(body, {"request_id"})
+                key = (role, request_key(body["request_id"]))
+                request = (route, body)
+                if key in entry["commands"]:
+                    previous, result = entry["commands"][key]
+                    if previous != request:
+                        raise APIError(409, "request_id_conflict")
+                    return 200, deepcopy(result)
+                if len(entry["commands"]) >= 10000:
+                    raise APIError(503, "local_command_capacity")
+                # Version is read under the service lock, so a stale browser feed
+                # cannot prevent an audio fault from stopping current execution.
+                if run.state == "created":
+                    raise APIError(409, "run_not_started")
+                run.request_technical_pause(expected_version=run.execution_version)
+                result = self._snapshot(run)
+                entry["commands"][key] = (deepcopy(request), deepcopy(result))
+                return 200, result
             if route == "acks":
                 if role not in ("execution", "audio"):
                     raise APIError(403, "forbidden")

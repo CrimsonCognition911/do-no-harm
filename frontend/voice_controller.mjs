@@ -1,5 +1,5 @@
 const PARTICIPANT_TYPES = new Set(["doctor_action", "clinical_update", "session_state"]);
-const QUIET_STATES = new Set(["pause_requested", "paused", "coaching", "resume_requested", "debrief", "ended", "failed"]);
+const QUIET_STATES = new Set(["pause_requested", "paused", "coaching", "resume_requested", "debrief", "ended", "failed", "technical_pause"]);
 
 function text(value, maximum = 4000) {
   return typeof value === "string" && value.length > 0 && value.length <= maximum;
@@ -13,8 +13,13 @@ function validParticipantEvent(event) {
 }
 
 export class VoiceController {
-  constructor({ sendLive, delegate, acknowledgeDelivery, acknowledgeAudio, setPlayback, renderEvent, onStatus }) {
+  constructor({ sendLive, delegate, acknowledgeDelivery, acknowledgeAudio, setPlayback, renderEvent, onStatus, requestTechnicalPause = async () => { throw new Error("Pause transport unavailable"); } }) {
     this.sendLive = sendLive;
+    this.requestTechnicalPause = requestTechnicalPause;
+    this.generation = 0;
+    this.fault = null;
+    this.pauseInFlight = null;
+    this.displayed = new Set();
     this.delegate = delegate;
     this.acknowledgeDelivery = acknowledgeDelivery;
     this.acknowledgeAudio = acknowledgeAudio;
@@ -27,7 +32,6 @@ export class VoiceController {
     this.consent = false;
     this.transcript = [];
     this.events = new Map();
-    this.pendingAnnouncements = [];
     this.announced = new Set();
   }
 
@@ -38,7 +42,7 @@ export class VoiceController {
 
   clearConversation() {
     this.transcript.length = 0;
-    this.pendingAnnouncements.length = 0;
+    this.generation++;
   }
 
   addCorrection(value) {
@@ -63,9 +67,8 @@ export class VoiceController {
         this.sendLive({ type: "session.thinking.append", event_id: `reconnect-context:${crypto.randomUUID()}`,
           delegation_id: null, content: `Participant-visible context restored after reconnect: ${recent}` });
       }
-      if (this.state === "resume_requested") this.acknowledgeAudio("resume", this.executionVersion);
-      this.setPlayback(this.state === "running", { flush: false });
-      if (this.state === "running") {
+      if (this.state === "resume_requested") return this.acknowledgeAudio("resume", this.executionVersion);
+      if (this.state === "running" && !this.fault) {
         for (const item of this.events.values()) {
           if (item.type === "clinical_update" && item.payload.delivery_stage === "published") this.announce(item);
         }
@@ -88,17 +91,19 @@ export class VoiceController {
   }
 
   async handleDelegation(event) {
+    if (!this.consent || !this.connected || this.state !== "running" || this.fault) return;
+    const version = this.executionVersion;
+    const generation = this.generation;
     const delegationId = event.delegation?.id;
     if (!text(delegationId, 256) || event.delegation?.target !== "client") return;
-    const version = this.executionVersion;
     const result = await this.delegate({
       delegation_id: delegationId,
       offset_ms: Number.isInteger(event.offset_ms) && event.offset_ms >= 0 ? event.offset_ms : 0,
       execution_version: this.executionVersion,
       transcript: this.transcript.map((item) => ({ ...item })),
     });
-    if (!this.connected || this.state !== "running" || version !== this.executionVersion ||
-        !result || !text(result.spoken_update, 2000)) return;
+    if (!result || !text(result.spoken_update, 2000) || version !== this.executionVersion ||
+        generation !== this.generation || !this.consent || !this.connected || this.state !== "running" || this.fault) return;
     this.sendLive({
       type: "session.commentary.append",
       event_id: `delegation-result:${crypto.randomUUID()}`,
@@ -109,15 +114,30 @@ export class VoiceController {
 
   async applyFeed(feed) {
     if (!feed || !Array.isArray(feed.events)) return;
-    if (Number.isInteger(feed.execution_version)) this.executionVersion = feed.execution_version;
+    // Replays may contain old running states. Gate playback with the current
+    // snapshot before rendering history or announcing any publications.
+    const latest = [...feed.events].reverse().find(e => validParticipantEvent(e) && e.type === "session_state");
+    const version = feed.execution_version ?? latest?.execution_version;
+    const state = feed.state ?? latest?.payload.state;
+    if (this.fault && this.fault.pauseVersion === null) await this.retryTechnicalPause();
+    if (this.fault && this.fault.pauseVersion !== null && state === "running" && version > this.fault.pauseVersion) {
+      this.fault = null; // Only a new, completed server resume releases the latch.
+    }
+    if (state && version >= this.executionVersion) {
+      await this.applyState({event_id: `snapshot:${version}:${state}`, execution_version: version, payload: {state}});
+    }
     for (const event of feed.events) {
-      if (!validParticipantEvent(event) || this.events.has(event.event_id)) continue;
-      this.events.set(event.event_id, event);
-      if (event.type === "session_state") await this.applyState(event);
-      this.renderEvent(event);
+      if (!validParticipantEvent(event)) continue;
+      if (!this.events.has(event.event_id)) {
+        this.events.set(event.event_id, event);
+        this.renderEvent(event);
+      }
       if (event.type === "clinical_update" && event.payload.delivery_stage === "published") {
-        await this.acknowledgeDelivery(event, "displayed");
-        if (!QUIET_STATES.has(this.state)) this.announce(event);
+        if (!this.displayed.has(event.event_id)) {
+          const receipt = await this.acknowledgeDelivery(event, "displayed");
+          if (receipt?.accepted !== false) this.displayed.add(event.event_id);
+        }
+        this.announce(event);
       }
     }
   }
@@ -125,6 +145,7 @@ export class VoiceController {
   async applyState(event) {
     const next = event.payload.state;
     if (typeof next !== "string") return;
+    if (next !== this.state || event.execution_version !== this.executionVersion) this.generation++;
     this.state = next;
     this.executionVersion = event.execution_version;
     this.onStatus(next);
@@ -134,14 +155,20 @@ export class VoiceController {
       return;
     }
     if (QUIET_STATES.has(next)) {
-      this.pendingAnnouncements.length = 0;
-      this.connected = false;
       this.setPlayback(false, { flush: true });
+      if (this.connected) {
+        this.sendLive({
+          type: "session.instructions.append",
+          event_id: `pause:${event.event_id}`,
+          delegation_id: null,
+          content: "Stop speaking now. The simulation is paused. Do not announce clinical updates until the application reports that it is running.",
+        });
+      }
       if (next === "pause_requested") await this.acknowledgeAudio("pause", event.execution_version);
       return;
     }
-    if (next === "running") {
-      this.setPlayback(this.connected, { flush: false });
+    if (next === "running" && !this.fault) {
+      this.setPlayback(true, { flush: false });
       for (const item of this.events.values()) {
         if (item.type === "clinical_update" && item.payload.delivery_stage === "published") this.announce(item);
       }
@@ -149,9 +176,8 @@ export class VoiceController {
   }
 
   announce(event) {
-    if (!this.connected || this.announced.has(event.event_id) || QUIET_STATES.has(this.state)) return;
+    if (!this.connected || this.fault || this.state !== "running" || this.announced.has(event.event_id)) return;
     this.announced.add(event.event_id);
-    this.pendingAnnouncements.push(event);
     this.sendLive({
       type: "session.commentary.append",
       event_id: `clinical-update:${event.event_id}`,
@@ -160,18 +186,44 @@ export class VoiceController {
     });
   }
 
-  async playbackObserved() {
-    // Generic media progress cannot identify which clinical update was heard.
-    // Leave spoken delivery unconfirmed until an event-correlated receipt exists.
-    return false;
+  async retryTechnicalPause() {
+    if (!this.fault || this.fault.pauseVersion !== null) return;
+    if (this.pauseInFlight) return this.pauseInFlight;
+    const fault = this.fault;
+    this.pauseInFlight = (async () => {
+      try {
+        const snapshot = await this.requestTechnicalPause({request_id: fault.id});
+        if (!Number.isInteger(snapshot?.execution_version) || !QUIET_STATES.has(snapshot.state)) {
+          throw new Error("Pause was not confirmed");
+        }
+        fault.pauseVersion = snapshot.execution_version;
+        if (snapshot.execution_version >= this.executionVersion) {
+          await this.applyState({event_id: fault.id, execution_version: snapshot.execution_version,
+            payload: {state: snapshot.state}});
+        }
+      } catch {
+        // Keep playback blocked; the next poll retries the same request ID.
+        this.onStatus("technical_pause");
+      }
+    })();
+    try { await this.pauseInFlight; } finally { this.pauseInFlight = null; }
+  }
+
+  technicalPause() {
+    this.generation++;
+    if (!this.fault || (this.fault.pauseVersion !== null && this.executionVersion > this.fault.pauseVersion)) {
+      this.fault = {id: `audio-fault:${crypto.randomUUID()}`, pauseVersion: null};
+    }
+    this.setPlayback(false, {flush: true});
+    this.onStatus("technical_pause");
+    return this.retryTechnicalPause();
   }
 
   disconnected() {
     this.connected = false;
-    this.pendingAnnouncements.length = 0;
-    this.setPlayback(false, { flush: true });
-    this.onStatus("technical_pause");
+    return this.technicalPause();
   }
+
 }
 
 export function correlateActions(events) {

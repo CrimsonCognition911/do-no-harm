@@ -22,6 +22,7 @@ const update = { type: "clinical_update", event_id: "result-1", visibility: "par
 
 test("keeps timestamped partial transcripts and explicit corrections for client delegation", async () => {
   const { controller, calls } = harness();
+  controller.setConsent(true);
   controller.connected = true;
   controller.state = "running";
   controller.onLiveEvent({ type: "session.input_transcript.delta", delta: "Order", start_ms: 10, end_ms: 80 });
@@ -34,13 +35,12 @@ test("keeps timestamped partial transcripts and explicit corrections for client 
   assert.equal(calls.live.at(-1).delegation_id, "opaque");
 });
 
-test("renders publication before announcing and leaves spoken delivery unconfirmed", async () => {
+test("renders publication and records display without inventing spoken evidence", async () => {
   const { controller, calls } = harness();
   await controller.applyFeed({ execution_version: 1, events: [state("running", "running"), update] });
   controller.onLiveEvent({ type: "session.started" });
   assert.deepEqual(calls.delivery, [["result-1", "displayed"]]);
   assert.match(calls.live.at(-1).content, /Confirmed synthetic chart update/);
-  await controller.playbackObserved();
   assert.deepEqual(calls.delivery, [["result-1", "displayed"]]);
 });
 

@@ -22,9 +22,8 @@ let peer;
 let channel;
 let microphone;
 let pollTimer;
-let connectionEpoch = 0;
-let feedHealthy = false;
 let liveSessionId;
+let voiceAttempt = 0;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -57,7 +56,11 @@ function setPlayback(enabled, { flush }) {
   elements.audio.muted = !enabled;
   if (!enabled) elements.audio.pause();
   else elements.audio.play().catch(() => {});
-  if (flush) closeTransport();
+  if (flush) {
+    // Muting alone does not drain a WebRTC receiver. Close the old transport
+    // before acknowledging pause; resume requires a fresh voice connection.
+    disconnectVoice({clearContext: false, technicalFault: false});
+  }
 }
 
 function renderEvent(event) {
@@ -86,6 +89,7 @@ function renderEvent(event) {
 
 const controller = new VoiceController({
   sendLive,
+  requestTechnicalPause: (body) => api("/api/technical-pause", {method: "POST", body: JSON.stringify(body)}),
   delegate: (body) => api("/api/delegations", { method: "POST", body: JSON.stringify(body) }).catch((error) => {
     elements.detail.textContent = `Examiner unavailable: ${error.message}. The conversation remains unscored.`;
     return null;
@@ -117,37 +121,40 @@ async function waitForIce(connection) {
 }
 
 async function connectVoice() {
-  if (!controller.consent || !feedHealthy || !["running", "resume_requested"].includes(controller.state)) return;
-  const epoch = ++connectionEpoch;
+  if (!controller.consent || !["running", "resume_requested"].includes(controller.state) ||
+      (controller.fault && controller.state !== "resume_requested")) return;
+  const attempt = ++voiceAttempt;
   elements.start.disabled = true;
   elements.detail.textContent = "Requesting microphone access…";
-  const acquired = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  if (epoch !== connectionEpoch) { acquired.getTracks().forEach((track) => track.stop()); return; }
-  microphone = acquired;
+  const input = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  if (attempt !== voiceAttempt || !controller.consent) {
+    input.getTracks().forEach(track => track.stop());
+    return;
+  }
+  microphone = input;
   peer = new RTCPeerConnection();
   const connection = peer;
   channel = peer.createDataChannel("oai-events");
   channel.addEventListener("message", ({ data }) => {
-    if (connection !== peer) return;
-    try { Promise.resolve(controller.onLiveEvent(JSON.parse(data))).catch(() => {}); } catch { /* malformed provider events are ignored */ }
+    try {
+      if (peer === connection) Promise.resolve(controller.onLiveEvent(JSON.parse(data))).catch(() => controller.technicalPause());
+    } catch { /* malformed provider events are ignored */ }
   });
-  peer.addEventListener("track", (event) => {
-    if (connection === peer) elements.audio.srcObject = event.streams[0];
-  });
+  peer.addEventListener("track", (event) => { if (peer === connection) elements.audio.srcObject = event.streams[0]; });
   peer.addEventListener("connectionstatechange", () => {
-    if (connection === peer && ["failed", "disconnected"].includes(connection.connectionState)) {
+    if (peer === connection && ["failed", "disconnected"].includes(connection.connectionState)) {
       disconnectVoice({ clearContext: false });
       elements.start.textContent = "Reconnect voice";
-      elements.detail.textContent = "Voice disconnected. Local voice is stopped; reconnect does not repeat backend work.";
+      elements.detail.textContent = "Voice disconnected. Playback stopped; requesting a server technical pause. Reconnect does not resume the run.";
     }
   });
   microphone.getTracks().forEach((track) => peer.addTrack(track, microphone));
   await connection.setLocalDescription(await connection.createOffer());
   await waitForIce(connection);
-  if (epoch !== connectionEpoch) return;
+  if (attempt !== voiceAttempt) return;
   const result = await api("/api/live/session", { method: "POST", body: JSON.stringify({ sdp: connection.localDescription.sdp }) });
-  if (epoch !== connectionEpoch) {
-    await api("/api/live/hangup", { method: "POST", body: JSON.stringify({ session_id: result.session.id }) }).catch(() => {});
+  if (attempt !== voiceAttempt || !controller.consent) {
+    await api("/api/live/hangup", {method: "POST", body: JSON.stringify({session_id: result.session.id})}).catch(() => {});
     return;
   }
   liveSessionId = result.session.id;
@@ -157,8 +164,8 @@ async function connectVoice() {
   elements.detail.textContent = "Listening. You can interrupt or correct at any time; backend work continues independently.";
 }
 
-function closeTransport() {
-  connectionEpoch += 1;
+function disconnectVoice({ clearContext, technicalFault = true }) {
+  voiceAttempt++;
   if (liveSessionId) {
     api("/api/live/hangup", { method: "POST", body: JSON.stringify({ session_id: liveSessionId }) }).catch(() => {});
     liveSessionId = undefined;
@@ -175,14 +182,12 @@ function closeTransport() {
   previousChannel?.close();
   previousPeer?.close();
   elements.start.textContent = "Reconnect voice";
+  if (technicalFault) void controller.disconnected();
+  else controller.connected = false;
+  if (clearContext) controller.clearConversation();
   elements.start.disabled = !controller.consent;
   elements.interrupt.disabled = true;
   elements.end.disabled = true;
-}
-
-function disconnectVoice({ clearContext }) {
-  controller.disconnected();
-  if (clearContext) controller.clearConversation();
 }
 
 function endVoice() {
@@ -194,11 +199,9 @@ async function poll() {
   try {
     const feed = await api(`/api/events?after=${cursor}`);
     await controller.applyFeed(feed);
-    feedHealthy = true;
     cursor = feed.next_cursor;
   } catch (error) {
-    feedHealthy = false;
-    disconnectVoice({ clearContext: false });
+    await controller.technicalPause();
     elements.detail.textContent = `Evidence feed unavailable: ${error.message}. No clinical penalty should be inferred.`;
   } finally {
     pollTimer = setTimeout(poll, 750);
@@ -217,10 +220,7 @@ elements.start.addEventListener("click", () => connectVoice().catch((error) => {
   elements.detail.textContent = `Voice unavailable: ${error.message}`;
 }));
 elements.end.addEventListener("click", endVoice);
-elements.interrupt.addEventListener("click", () => {
-  disconnectVoice({ clearContext: false });
-  elements.detail.textContent = "Voice interrupted. Select Reconnect voice to continue; backend work remains pending.";
-});
+elements.interrupt.addEventListener("click", () => controller.technicalPause());
 elements.recordCorrection.addEventListener("click", async () => {
   const value = elements.correction.value.trim();
   if (!controller.addCorrection(value)) return;

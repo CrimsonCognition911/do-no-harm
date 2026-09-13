@@ -130,6 +130,16 @@ class SessionGateway:
             raise BFFError(502, "invalid_upstream_event")
         return result
 
+    def technical_pause(self, body):
+        exact(body, {"request_id"})
+        if not bounded_text(body["request_id"], maximum=128):
+            raise BFFError(422, "invalid_request_id")
+        status, result = self.client.request(self._url("/technical-pause"), method="POST",
+                                             token=self.audio_token, body=body)
+        if status != 200:
+            raise BFFError(status, "technical_pause_unavailable")
+        return result
+
     def audio_ack(self, body):
         exact(body, {"request_id", "execution_version", "transition"})
         if body["transition"] not in {"pause", "resume"}:
@@ -341,6 +351,8 @@ class DoctorHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/actions":
                 exact(body, {"event_id", "execution_version", "action", "kind"})
                 self.reply(200, self.server.gateway.action(body))
+            elif parsed.path == "/api/technical-pause":
+                self.reply(200, self.server.gateway.technical_pause(body))
             elif parsed.path == "/api/audio/ack":
                 self.reply(200, self.server.gateway.audio_ack(body))
             elif parsed.path == "/api/delegations":
@@ -369,7 +381,7 @@ class DoctorHandler(BaseHTTPRequestHandler):
                 self.reply(200, self.server.bridge.delegate(self.server.gateway.run_id, request))
             elif parsed.path == "/api/delivery":
                 exact(body, {"event_id", "execution_version", "stage"})
-                if not bounded_text(body["event_id"], maximum=256) or body["stage"] not in {"displayed", "spoken"} or type(body["execution_version"]) is not int:
+                if not bounded_text(body["event_id"], maximum=256) or body["stage"] != "displayed" or type(body["execution_version"]) is not int:
                     raise BFFError(422, "invalid_delivery")
                 if self.server.publications.get(body["event_id"]) != body["execution_version"]:
                     raise BFFError(409, "unknown_publication")

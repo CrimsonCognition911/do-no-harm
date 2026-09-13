@@ -85,9 +85,14 @@ class DoctorInterfaceRedTests(unittest.TestCase):
             bridge.delegate("run", {"delegation_id": "opaque", "participant_event_ids": ["visible-action"]})
 
     def test_delivery_ack_requires_a_server_observed_publication(self):
-        body = {"event_id": "made-up", "execution_version": 1, "stage": "spoken"}
+        body = {"event_id": "made-up", "execution_version": 1, "stage": "displayed"}
         status, result = self.request("POST", "/api/delivery", body, csrf=self.csrf)
         self.assertEqual((status, result["error"]), (409, "unknown_publication"))
+
+    def test_browser_cannot_assert_spoken_receipts_even_for_known_publications(self):
+        self.server.publications["known"] = 1
+        body = {"event_id": "known", "execution_version": 1, "stage": "spoken"}
+        self.assertEqual(self.request("POST", "/api/delivery", body, csrf=self.csrf)[0], 422)
 
     def test_unconfigured_dependencies_fail_closed_and_body_parser_rejects_duplicates(self):
         self.assertEqual(self.request("POST", "/api/live/session", {"sdp": "offer"}, csrf=self.csrf)[0], 409)

@@ -106,6 +106,18 @@ class Run:
             self._acks.clear()
             self._transition("pause_requested")
 
+    def request_technical_pause(self, *, expected_version):
+        """Audio faults may stop a run, but cannot coach, resume or acknowledge execution."""
+        with self._lock:
+            self._check(expected_version, {"created", "running", "pause_requested", "paused",
+                                           "coaching", "resume_requested", "debrief", "ended", "failed"})
+            if self._state == "running":
+                self.request_pause(expected_version=expected_version)
+            elif self._state == "resume_requested":
+                self._version += 1
+                self._acks.clear()
+                self._transition("pause_requested")
+
     def acknowledge_pause(self, component, *, expected_version):
         """Execution must drain/reconcile writes; audio must stop/flush playback."""
         with self._lock:

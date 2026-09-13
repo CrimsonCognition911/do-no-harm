@@ -31,11 +31,18 @@ Application contract **0.1 is frozen**. Use these files; do not guess field name
   spoken corrections recorded as intentions.
 - Participant-feed validation against the shared event-contract semantics. Raw
   findings, examiner visibility and unknown future-event types are dropped.
-- Display acknowledgments for published clinical updates. Spoken delivery remains
-  unconfirmed without event-correlated evidence; playback does not prove comprehension.
-- Pause-safe playback: local media tracks and the peer are closed before the BFF
-  submits the run-scoped audio acknowledgment. Resume waits for a fresh connected
-  voice session. Disconnect stops local voice; it does not pause the backend run.
+- Display acknowledgments for published clinical updates. Browser playback ticks
+  do not identify which announcement played, so spoken receipts are disabled
+  until a verified provider-to-playback correlation adapter exists.
+- Pause-safe playback: the microphone and WebRTC transport close before the BFF submits the
+  run-scoped audio worker acknowledgment. Resume waits for a connected voice
+  session. Disconnect, feed failure and Stop playback request a real server pause
+  using the audio capability. Failed requests retry with the same ID; reconnect
+  alone cannot resume the run. Execution must separately acknowledge quiescence,
+  and the examiner must request resume. If the backend is unreachable, local audio
+  stays off and server pause remains unconfirmed until connectivity returns.
+- Delayed examiner responses are discarded after pause, disconnect, consent
+  revocation or execution-version changes. Current snapshot state gates replay.
 - Explicit recording consent. The client keeps audio/transcript context in
   memory for this browser session only and clears it on consent revocation or
   an explicit end.
@@ -43,11 +50,12 @@ Application contract **0.1 is frozen**. Use these files; do not guess field name
 ## Local setup
 
 Start the existing authenticated fixture session API and create/start a
-synthetic run as described in `contracts/session-api.md`. Give the doctor BFF
+synthetic run as described in `contracts/session-api.md` (use `--port 8010`
+if port 8000 is occupied). Give the doctor BFF
 only the run ID plus doctor and audio capabilities:
 
 ```sh
-export DNH_SESSION_API=http://127.0.0.1:8000
+export DNH_SESSION_API=http://127.0.0.1:8010
 export DNH_RUN_ID='<assigned synthetic run>'
 export DNH_DOCTOR_CAPABILITY='<doctor capability>'
 export DNH_AUDIO_CAPABILITY='<audio capability>'
@@ -82,7 +90,7 @@ IDs taken from the BFF's authorized feed. The response must be:
 ```
 
 Only those three fields cross back to Live. Evidence references outside the
-authorized participant feed fail closed. Delivery acknowledgments use the same
+authorized participant feed fail closed. Display acknowledgments use the same
 endpoint with `type: delivery_ack`, and are accepted only for a publication the
 BFF observed.
 
@@ -114,17 +122,3 @@ OpenMRS provider calls. Completing the real voice → examiner → voice proof s
 depends on the examiner bridge and a provider-enabled environment; keep the
 GitHub issue open until that evidence and the corresponding authoritative
 delivery receipts exist.
-
-## Review fixes: audio delivery and stopping
-
-Media playback progress is not evidence that a particular clinical update was heard.
-Only displayed receipts are submitted; spoken delivery remains unconfirmed until
-an event-correlated provider receipt is integrated. Do not grade hearing an update
-from elapsed audio time.
-
-Pause, interrupt, and feed failure close the local peer, stop media tracks, detach
-audio, clear pending announcements, and request provider hangup. Reconnect voice
-creates a fresh session once the feed is healthy and the run is running or awaiting
-audio resume. Local voice failure does not itself pause the authoritative run.
-
-Do not infer live provider readiness from the scaffold health endpoint; `/ready` deliberately returns 503.

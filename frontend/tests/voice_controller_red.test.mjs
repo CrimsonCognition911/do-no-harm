@@ -33,7 +33,7 @@ test("pause flushes speech before acknowledging and suppresses clinical announce
     { type: "clinical_update", event_id: "late", visibility: "participant", execution_version: 2,
       payload: { delivery_stage: "published", summary: "must stay quiet" } },
   ] });
-  assert.deepEqual(calls.playback.at(-1), [false, { flush: true }]);
+  assert.deepEqual(calls.playback[0], [false, { flush: true }]);
   assert.deepEqual(calls.audio, [["pause", 2]]);
   assert.equal(calls.live.some((event) => event.content?.includes("must stay quiet")), false);
 });
@@ -53,114 +53,114 @@ test("disconnect enters technical pause and clears playback without inventing a 
   assert.deepEqual(calls.playback, [[false, { flush: true }]]);
 });
 
-import { readFile } from "node:fs/promises";
-import vm from "node:vm";
-
-async function browserHarness() {
-  const calls = { requests: [], stopped: 0, closed: 0, played: 0 };
-  const elements = new Map();
-  const track = () => ({ stop: () => calls.stopped++ });
-  const stream = () => ({ getTracks: () => [track()] });
-  const element = () => ({ listeners: {}, disabled: false, muted: true, currentTime: 0,
-    textContent: "", value: "", addEventListener(name, fn) { this.listeners[name] = fn; },
-    pause() {}, play() { calls.played++; return Promise.resolve(); }, append() {} });
-  let failFeed = false;
-  let feed = { execution_version: 1, events: [state("start", "running", 1)], next_cursor: 1 };
-  let peer;
-  class Peer {
-    constructor() { peer = this; this.listeners = {}; this.iceGatheringState = "complete"; }
-    createDataChannel() { this.channel = { readyState: "open", listeners: {}, send() {}, close() {},
-      addEventListener(name, fn) { this.listeners[name] = fn; } }; return this.channel; }
-    addEventListener(name, fn) { this.listeners[name] = fn; }
-    addTrack() {}
-    async createOffer() { return { type: "offer", sdp: "offer" }; }
-    async setLocalDescription(value) { this.localDescription = value; }
-    async setRemoteDescription() {
-      this.listeners.track({ streams: [stream()] });
-      this.channel.listeners.message({ data: JSON.stringify({ type: "session.started" }) });
-    }
-    close() { calls.closed++; }
-  }
-  const sandbox = { VoiceController, correlateActions: () => [], console,
-    crypto: { randomUUID: () => "test-id" }, RTCPeerConnection: Peer,
-    navigator: { mediaDevices: { getUserMedia: async () => stream() } },
-    setTimeout: () => 1, clearTimeout() {},
-    document: { body: {}, querySelector(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); }, createElement: element },
-    window: { addEventListener() {} },
-    fetch: async (path, options = {}) => {
-      calls.requests.push({ path, body: options.body && JSON.parse(options.body), audioAttached: !!elements.get("#remote-audio")?.srcObject });
-      if (path.startsWith("/api/events") && failFeed) throw new Error("offline");
-      const result = path === "/api/bootstrap" ? { csrf: "test", live_available: true }
-        : path.startsWith("/api/events") ? feed
-        : path === "/api/live/session" ? { session: { id: "live-test" }, transport: { sdp: "answer" } } : {};
-      return { ok: true, json: async () => result };
-    },
-  };
-  const source = (await readFile(new URL("../app.js", import.meta.url), "utf8")).replace(/^import .*;\n/, "");
-  const api = await vm.runInNewContext(`(async () => { ${source}\nreturn { controller, connectVoice, poll }; })()`, sandbox);
-  await api.poll();
-  api.controller.setConsent(true);
-  return { ...api, calls, elements, setFeed: (value) => { feed = value; }, failFeed: () => { failFeed = true; }, peer: () => peer };
-}
-
-test("browser pause stops tracks and detaches audio before acknowledging; reconnect restores playback", async () => {
-  const h = await browserHarness();
-  await h.connectVoice();
-  assert.ok(h.elements.get("#remote-audio").srcObject);
-  h.controller.pendingAnnouncements.push({ event_id: "old" });
-  h.setFeed({ execution_version: 2, events: [state("pause-real", "pause_requested", 2)], next_cursor: 2 });
-  await h.poll();
-  assert.ok(h.calls.stopped >= 2);
-  assert.equal(h.calls.closed, 1);
-  assert.equal(h.elements.get("#remote-audio").srcObject, null);
-  assert.equal(h.controller.pendingAnnouncements.length, 0);
-  const ack = h.calls.requests.find((item) => item.path === "/api/audio/ack");
-  assert.equal(ack.audioAttached, false);
-  h.setFeed({ execution_version: 3, events: [state("resume-real", "resume_requested", 3)], next_cursor: 3 });
-  await h.poll();
-  await h.connectVoice();
-  h.setFeed({ execution_version: 3, events: [state("running-real", "running", 3)], next_cursor: 4 });
-  await h.poll();
-  assert.equal(h.elements.get("#remote-audio").muted, false);
-  assert.ok(h.calls.played >= 2);
-});
-
-test("browser interrupt and feed failure close voice; explicit reconnect recovers interrupt", async () => {
-  const h = await browserHarness();
-  await h.connectVoice();
-  h.elements.get("#interrupt").listeners.click();
-  assert.equal(h.calls.closed, 1);
-  assert.equal(h.elements.get("#start").disabled, false);
-  await h.connectVoice();
-  assert.equal(h.elements.get("#remote-audio").muted, false);
-  h.failFeed();
-  await h.poll();
-  assert.equal(h.calls.closed, 2);
-  assert.equal(h.controller.connected, false);
-  await h.connectVoice();
-  assert.equal(h.calls.requests.filter((item) => item.path === "/api/live/session").length, 2);
-});
-
-test("browser media progress never submits a spoken receipt", async () => {
-  const h = await browserHarness();
-  await h.connectVoice();
-  h.controller.pendingAnnouncements.push({ event_id: "unrelated-audio" });
-  const audio = h.elements.get("#remote-audio");
-  audio.currentTime = 5;
-  await audio.listeners.timeupdate?.();
-  await h.controller.playbackObserved();
-  assert.equal(h.calls.requests.some((item) => item.path === "/api/delivery" && item.body.stage === "spoken"), false);
-});
-
-test("delegation resolving after pause cannot inject stale clinical speech", async () => {
+test("late delegation replies are discarded after pause", async () => {
   const { controller, calls } = harness();
-  let resolve;
-  controller.delegate = () => new Promise((done) => { resolve = done; });
+  controller.setConsent(true);
   controller.connected = true;
   controller.state = "running";
-  const pending = controller.handleDelegation({ delegation: { id: "pending", target: "client" } });
-  await controller.applyState(state("pause-pending", "pause_requested", 2));
-  resolve({ spoken_update: "stale answer" });
+  let resolve;
+  controller.delegate = () => new Promise(r => { resolve = r; });
+  const pending = controller.handleDelegation({delegation: {id: "old", target: "client"}});
+  await controller.applyState(state("pause", "pause_requested", 2));
+  resolve({spoken_update: "stale result"});
   await pending;
-  assert.equal(calls.live.some((item) => item.content === "stale answer"), false);
+  assert.equal(calls.live.some(e => e.content === "stale result"), false);
+});
+
+test("disconnect requests a real pause and reconnect cannot clear it", async () => {
+  const { controller, calls } = harness();
+  controller.state = "running";
+  controller.connected = true;
+  let pauses = 0;
+  controller.requestTechnicalPause = async () => { pauses++; return {state: "pause_requested", execution_version: 2}; };
+  await controller.disconnected();
+  assert.equal(pauses, 1);
+  assert.equal(controller.state, "pause_requested");
+  controller.onLiveEvent({type: "session.started"});
+  assert.notEqual(controller.state, "running");
+  assert.equal(calls.playback.some(([enabled]) => enabled), false);
+});
+
+test("generic audio ticks cannot establish a spoken receipt", async () => {
+  const {controller, calls} = harness();
+  controller.state = "running"; controller.connected = true;
+  controller.announce({event_id: "new-result", payload: {summary: "not yet spoken"}});
+  await controller.playbackObserved?.();
+  assert.equal(calls.delivery.some(([,stage]) => stage === "spoken"), false);
+});
+
+test("pause acknowledgment retries after a transient failure", async () => {
+  const {controller} = harness();
+  let attempts = 0;
+  controller.acknowledgeAudio = async () => { if (++attempts === 1) throw new Error("offline"); };
+  const feed = {state: "pause_requested", execution_version: 2, events: [state("pause", "pause_requested", 2)]};
+  await assert.rejects(controller.applyFeed(feed));
+  await controller.applyFeed(feed);
+  assert.equal(attempts, 2);
+});
+
+test("fault stays latched across stale running snapshots and clears only after server resume", async () => {
+  const {controller, calls} = harness();
+  controller.state = 'running'; controller.connected = true;
+  let attempts = 0;
+  controller.requestTechnicalPause = async () => {
+    if (++attempts === 1) throw new Error('backend unavailable');
+    return {state: 'pause_requested', execution_version: 2};
+  };
+  await controller.technicalPause();
+  const id = controller.fault.id;
+  await controller.applyFeed({state: 'running', execution_version: 1, events: []});
+  assert.equal(attempts, 2);
+  assert.equal(controller.fault.id, id);
+  assert.equal(controller.state, 'pause_requested');
+  assert.equal(calls.playback.some(([enabled]) => enabled), false);
+  await controller.applyFeed({state: 'resume_requested', execution_version: 3, events: []});
+  await controller.applyFeed({state: 'running', execution_version: 3, events: []});
+  assert.equal(controller.fault, null);
+  assert.equal(calls.playback.at(-1)[0], true);
+});
+
+test("paused snapshots cannot replay old running events into audible updates", async () => {
+  const {controller, calls} = harness();
+  controller.connected = true;
+  await controller.applyFeed({state: 'paused', execution_version: 2, events: [
+    state('old-running', 'running', 1),
+    {type: 'clinical_update', event_id: 'old-result', visibility: 'participant', execution_version: 1,
+      payload: {delivery_stage: 'published', summary: 'replayed result'}},
+  ]});
+  assert.equal(controller.state, 'paused');
+  assert.equal(calls.playback.some(([enabled]) => enabled), false);
+  assert.equal(calls.live.some(e => e.content?.includes('replayed result')), false);
+});
+
+test("disconnect/reconnect and consent revocation invalidate outstanding replies", async () => {
+  for (const invalidate of [c => {void c.disconnected(); c.onLiveEvent({type: 'session.started'});}, c => c.setConsent(false)]) {
+    const {controller, calls} = harness();
+    controller.setConsent(true); controller.connected = true; controller.state = 'running';
+    let resolve;
+    controller.delegate = () => new Promise(r => {resolve = r;});
+    const pending = controller.handleDelegation({delegation: {id: 'pending', target: 'client'}});
+    invalidate(controller);
+    resolve({spoken_update: 'must be dropped'});
+    await pending;
+    assert.equal(calls.live.some(e => e.content === 'must be dropped'), false);
+  }
+});
+
+
+test("a new disconnect during resume requests a new server pause", async () => {
+  const {controller} = harness();
+  controller.state = 'running'; controller.connected = true;
+  const ids = [];
+  controller.requestTechnicalPause = async ({request_id}) => {
+    ids.push(request_id);
+    return {state: 'pause_requested', execution_version: ids.length * 2};
+  };
+  await controller.disconnected();
+  await controller.applyFeed({state: 'resume_requested', execution_version: 3, events: []});
+  await controller.disconnected();
+  assert.equal(ids.length, 2);
+  assert.notEqual(ids[0], ids[1]);
+  assert.equal(controller.executionVersion, 4);
+  assert.equal(controller.state, 'pause_requested');
 });

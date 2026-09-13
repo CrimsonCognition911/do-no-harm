@@ -1,6 +1,8 @@
 """Explicit live acceptance gate: python3 openmrs-config/test_live.py -v."""
 
 import json
+import os
+from pathlib import Path
 import unittest
 from urllib.error import HTTPError
 
@@ -12,7 +14,7 @@ RUNTIME = HERE.parent / "runs" / "openmrs"
 class LiveEDTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.manifest = json.loads((RUNTIME / "manifest.json").read_text())
+        cls.manifest = json.loads(Path(os.environ.get("DNH_MANIFEST", RUNTIME / "manifest.json")).read_text())
         credentials = json.loads((RUNTIME / "credentials.json").read_text())
         cls.clients = {identity: Client(cls.manifest["base_url"], "dnh-" + identity, password)
                        for identity, password in credentials.items()}

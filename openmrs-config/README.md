@@ -35,7 +35,21 @@ Random passwords for `dnh-doctor`, `dnh-simulation` and `dnh-review` are generat
 
 Metadata uses exact names, an ownership description and server-issued UUIDs. Unowned collisions, retired metadata, incorrect parent/type mappings and changed form schemas fail instead of overwriting shared metadata. Owned DNH roles converge to explicit privileges; inherited Anonymous/Authenticated privileges are checked first.
 
-The same output manifest reuses its patient and active visit. `--output runs/openmrs/another-run.json` starts a separate patient/visit and retains previous history. Persisted run identifiers recover partial patient/visit creation on sequential retries. Retain runtime manifests with their database. Run one configurator/publisher at a time; these scripts are not a concurrent event service. Default verification uses `runs/openmrs/manifest.json`.
+The same output manifest reuses its patient and active visit. `--output runs/openmrs/another-run.json` starts a separate patient/visit and retains previous history. Persisted run identifiers recover partial patient/visit creation on sequential retries. Retain runtime manifests with their database. Run one configurator/publisher at a time; these scripts are not a concurrent event service. Default verification uses `runs/openmrs/manifest.json`. When selecting a new run,
+pass the same manifest to the publisher and all verification commands:
+
+```sh
+python3 openmrs-config/configure.py --synthetic-instance --output runs/openmrs/another-run.json
+python3 openmrs-config/publish-fixture.py --manifest runs/openmrs/another-run.json
+DNH_MANIFEST=runs/openmrs/another-run.json python3 openmrs-config/test_live.py -v
+DNH_MANIFEST=runs/openmrs/another-run.json node openmrs-config/browser-smoke.cjs
+DNH_MANIFEST=runs/openmrs/another-run.json node openmrs-config/adapter-smoke.cjs /path/to/emr-webmcp
+```
+
+These paths are relative to the working directory. Credentials still come from
+`runs/openmrs/credentials.json`; the publisher also accepts `--credentials` for an
+explicit alternative. The browser list check identifies the selected patient by
+UUID, so retained runs with the same synthetic display name do not collide.
 
 ## Workflow and tests
 
