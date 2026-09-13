@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CrimsonCognition911/do-no-harm/contracts/voice-update/0.1",
+  "title": "DO NO HARM permitted voice update",
+  "description": "Frozen Live-facing packet 0.1. This is a sanitized projection, not an application ledger event and not an OpenAI API schema. Hidden rubric, findings and unreleased scenario events must never appear here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "run_id", "execution_version", "simulation_time_ms", "source_event_id", "say", "evidence_ids"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "kind": {"const": "permitted_voice_update"},
+    "run_id": {"type": "string", "minLength": 1},
+    "execution_version": {"type": "integer", "minimum": 1},
+    "simulation_time_ms": {"type": "integer", "minimum": 0},
+    "source_event_id": {"type": "string", "minLength": 1},
+    "say": {"type": "string", "minLength": 1},
+    "evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+  }
+}

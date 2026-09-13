@@ -70,6 +70,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/contracts/events":
             schema = json.loads((ROOT / "contracts" / "events.schema.json").read_text())
             self.send_json(200, schema)
+        elif path == "/api/contracts/handshake":
+            handshake = json.loads((ROOT / "contracts" / "samples" / "handshake.json").read_text())
+            self.send_json(200, handshake)
+        elif path == "/api/contracts/voice-update":
+            schema = json.loads((ROOT / "contracts" / "voice-update.schema.json").read_text())
+            self.send_json(200, schema)
         else:
             self.send_json(404, {"error": "not_found"})
 

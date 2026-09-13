@@ -112,6 +112,32 @@ class SessionAPITests(unittest.TestCase):
         self.assertEqual(self.request("POST", self.path + "/acks", self.tokens["audio"], {**body, "component": "execution"})[0], 422)
         self.assertEqual(self.request("POST", self.path + "/acks", self.tokens["execution"], body)[2]["state"], "paused")
 
+    def test_voice_feed_is_audio_only_and_omits_findings_and_ui_clicks(self):
+        self.command("start")
+        self.action()
+        finding = {"event_id": "finding-1", "execution_version": 1, "evidence_ids": ["action-1"],
+                   "payload": {"criterion_id": "hidden", "outcome": "concern", "rationale": "Hidden answer", "requires_clinician_review": True}}
+        self.assertEqual(self.request("POST", self.path + "/findings", self.tokens["examiner"], finding)[0], 200)
+        self.assertEqual(self.request("GET", self.path + "/voice", self.tokens["doctor"])[0], 403)
+        self.assertEqual(self.request("GET", self.path + "/voice", self.tokens["examiner"])[0], 403)
+        self.assertEqual(self.request("GET", self.path + "/voice?after=0", self.tokens["audio"])[0], 422)
+        status, _, body = self.request("GET", self.path + "/voice", self.tokens["audio"])
+        self.assertEqual(status, 200)
+        self.assertEqual(body["updates"], [])
+        self.command("pause")
+        for role in ("execution", "audio"):
+            self.request("POST", self.path + "/acks", self.tokens[role],
+                         {"request_id": "pause-ack", "transition": "pause", "execution_version": 2})
+        updates = self.request("GET", self.path + "/voice", self.tokens["audio"])[2]["updates"]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["kind"], "permitted_voice_update")
+        self.assertEqual(updates[0]["say"], "Simulation paused. Wait for examiner instructions.")
+        blob = json.dumps(updates)
+        self.assertNotIn("Hidden answer", blob)
+        self.assertNotIn("criterion_id", blob)
+        for secret in [OPERATOR, *self.tokens.values()]:
+            self.assertNotIn(secret, blob)
+
     def test_hidden_findings_never_enter_doctor_or_audio_replay(self):
         self.command("start")
         self.action()

@@ -68,6 +68,22 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("run_id", schema["required"])
         self.assertIn("execution_version", schema["required"])
         self.assertFalse(schema["additionalProperties"])
+        self.assertIn("Frozen application contract 0.1", schema["description"])
+
+    def test_frontend_can_fetch_handshake_samples_and_voice_schema(self):
+        status, _, handshake = self.request("GET", "/api/contracts/handshake")
+        self.assertEqual(status, 200)
+        self.assertEqual(handshake["status"], "frozen")
+        public = json.dumps({
+            "participant_feed": handshake["participant_feed"],
+            "permitted_voice_updates": handshake["permitted_voice_updates"],
+        })
+        self.assertNotIn("criterion_id", public)
+        self.assertNotIn("Hidden rubric", public)
+        status, _, voice = self.request("GET", "/api/contracts/voice-update")
+        self.assertEqual(status, 200)
+        self.assertEqual(voice["properties"]["kind"]["const"], "permitted_voice_update")
+        self.assertEqual(self.request("GET", "/api/contracts/adaptive-fixture.json")[0], 404)
 
     def test_unknown_paths_cannot_read_workspace_files(self):
         status, _, body = self.request("GET", "/../../.env.local")
