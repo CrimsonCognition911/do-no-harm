@@ -8,11 +8,15 @@ This is an **offline backend foundation**, not a working clinical evaluator. Imp
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
-The selected demo is an **acute MI (anterior STEMI)**. You approved the [case YAML and clinical-review rubric](cases/stemi/README.md); the separate [approval record](cases/stemi/review.json) binds the exact reviewed files by hash and supersedes their frozen pre-review status text. Runtime/scored use remains disabled until the ECG asset, local protocol, OpenMRS mappings and compiled runtime are verified.
+The selected demo is an **acute MI (anterior STEMI)**. You approved the [case YAML and clinical-review rubric](cases/stemi/README.md); the separate [approval record](cases/stemi/review.json) binds the exact reviewed files by hash and supersedes their frozen pre-review status text. The deterministic [compiled case](cases/stemi/compiled.json) is hash-bound to that review and exercises the actual adaptive planner. Runtime/scored use remains disabled until the ECG asset, local protocol, OpenMRS mappings and live integration are verified.
 
 ## Quick start
 
-Python 3.11+; no third-party runtime dependencies or installation step for the scaffold.
+Python 3.11+.
+
+```sh
+python3 -m pip install .
+```
 
 ```sh
 python3 backend/app.py --port 8000
@@ -75,4 +79,4 @@ For local frontend development, use a server-side BFF that authenticates its own
 
 `backend/adaptation.py` adds frozen case/rubric/policy hashes, bounded optional challenge selection, confirmed-action state preconditions, stale-work rejection and independent due-consequence planning. `contracts/adaptive-fixture.json` supplies two scripted performance paths for engineering tests, **not** a reviewed emergency case. Plans are labelled `planned_not_published`; there is no OpenMRS execution. See the handoff for the review gate and integration boundaries.
 
-This advances #1 and the control-plane portion of #6; neither issue is complete. Next backend work is the clinician-reviewed case, durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.
+This completes the authored-and-reviewed case package in #3 and advances #1 plus the control-plane portion of #6. Next backend work is durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.

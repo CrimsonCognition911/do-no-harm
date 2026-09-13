@@ -11,13 +11,13 @@
     "cases/stemi/README.md": "fb4187270b5fd6959701b3848e3270a8c0d0853d3ff6eef0d1ef88855c8a98c7"
   },
   "frozen_artifact_note": "The approved files retain their pre-review wording and unset approval metadata to preserve the exact reviewed bytes. This separate record supersedes their pending content-review status only.",
-  "compiled_runtime_artifact_sha256": null,
+  "compiled_runtime_artifact_sha256": "1c843acfa26a9ac43973a2536294898625f01f836203e2a20c4485e1e19e7650",
   "runtime_enabled": false,
   "scored_use_allowed": false,
   "remaining_release_gates": [
     "Supply and verify the ECG teaching asset if demonstrating image interpretation.",
     "Pin the local STEMI pathway and resolve actual OpenMRS metadata, units and supported workflows.",
-    "Compile the authoring case and verify equivalence, timing, branch rules and frozen runtime bindings.",
+    "Resolve frozen runtime bindings and verify equivalence against the target OpenMRS instance.",
     "Verify actual publication/read-back, evidence access, pause quiescence and provider integration."
   ]
 }

@@ -1,7 +1,8 @@
 """Frozen, bounded adaptive planning; never performs an OpenMRS write.
 
-The compiled JSON contract is deliberately smaller than the proposed authoring
-YAML. Real review, YAML compilation and durable publication adapters are pending.
+Version 0.1 remains available for non-clinical fixtures. Version 0.2 adds
+reviewed state-relative scheduling and publication effects for compiled cases.
+Durable publication adapters remain separate and fail closed.
 """
 from copy import deepcopy
 from dataclasses import dataclass
@@ -50,13 +51,21 @@ class FrozenCase:
         require(type(fixture) is bool, "fixture must be boolean")
         doc = deepcopy(document)
         keys(doc, {"format", "id", "version", "description", "rubric", "policy", "initial_state", "actions", "events"})
-        require(doc["format"] == "dnh.compiled-case/0.1", "Unsupported compiled case version")
+        require(doc["format"] in ("dnh.compiled-case/0.1", "dnh.compiled-case/0.2"), "Unsupported compiled case version")
         for field in ("id", "version", "description"):
             require(text(doc[field]), "Case metadata must be nonempty")
         rubric = doc["rubric"]
-        keys(rubric, {"id", "version", "criteria"})
+        rubric_fields = {"id", "version", "criteria"}
+        if doc["format"] == "dnh.compiled-case/0.2":
+            rubric_fields |= {"outcomes", "requires_clinician_review", "numeric_pass_fail_score_enabled", "alternatives_policy"}
+        keys(rubric, rubric_fields)
         require(text(rubric["id"]) and text(rubric["version"]), "Invalid rubric identity")
         require(isinstance(rubric["criteria"], list) and rubric["criteria"], "Empty rubric")
+        if doc["format"] == "dnh.compiled-case/0.2":
+            require(rubric["outcomes"] == ["acceptable", "concern", "insufficient_evidence"], "Invalid rubric outcomes")
+            require(rubric["requires_clinician_review"] is True, "Clinical findings must require review")
+            require(rubric["numeric_pass_fail_score_enabled"] is False, "Numeric competence scoring is not supported")
+            require(text(rubric["alternatives_policy"]), "Clinical alternatives policy is required")
         criteria = set()
         for criterion in rubric["criteria"]:
             keys(criterion, {"id", "description"})
@@ -80,7 +89,10 @@ class FrozenCase:
         require(isinstance(doc["events"], list) and doc["events"], "Empty event set")
         event_ids = set()
         for event in doc["events"]:
-            keys(event, {"id", "kind", "summary", "resource_key", "earliest_ms", "latest_ms", "requires", "difficulty", "criterion_id", "outcome", "allowed_modes"})
+            expected = {"id", "kind", "summary", "resource_key", "earliest_ms", "latest_ms", "requires", "difficulty", "criterion_id", "outcome", "allowed_modes"}
+            if doc["format"] == "dnh.compiled-case/0.2":
+                expected |= {"schedule", "set_state"}
+            keys(event, expected)
             require(all(text(event[field]) for field in ("id", "summary", "resource_key")), "Invalid event identity/content")
             require(event["id"] not in event_ids, "Duplicate event")
             event_ids.add(event["id"])
@@ -90,12 +102,27 @@ class FrozenCase:
             modes = event["allowed_modes"]
             require(isinstance(modes, list) and modes and all(m in ("coached", "assessment") for m in modes), "Invalid allowed modes")
             require(integer(event["difficulty"]), "Invalid difficulty")
+            if doc["format"] == "dnh.compiled-case/0.2":
+                schedule = event["schedule"]
+                keys(schedule, {"basis", "state_ref", "delay_ms"})
+                require(schedule["basis"] in ("simulation_time", "state_transition", "examiner_selection"), "Invalid schedule basis")
+                require(integer(schedule["delay_ms"]), "Invalid schedule delay")
+                if schedule["basis"] == "state_transition":
+                    require(schedule["state_ref"] in state, "Unknown schedule state")
+                else:
+                    require(schedule["state_ref"] is None, "Unexpected schedule state")
+                self._check_state(event["set_state"], state)
             if event["kind"] == "optional_challenge":
                 require(isinstance(event["criterion_id"], str) and event["criterion_id"] in criteria, "Unknown rubric criterion")
                 require(event["outcome"] in ("acceptable", "concern"), "Uncertainty must retain current path")
                 require(policy["min_difficulty"] <= event["difficulty"] <= policy["max_difficulty"], "Difficulty outside policy")
+                if doc["format"] == "dnh.compiled-case/0.2":
+                    require(event["schedule"]["basis"] == "examiner_selection", "Optional challenges require examiner selection")
+                    require(event["set_state"] == {}, "Educational challenges cannot mutate clinical state")
             else:
                 require(event["criterion_id"] is None and event["outcome"] is None and event["difficulty"] == 0, "Clinical consequences cannot depend on performance")
+                if doc["format"] == "dnh.compiled-case/0.2":
+                    require(event["schedule"]["basis"] != "examiner_selection", "Clinical events require deterministic schedules")
         encoded = canonical(doc)
         case_hash = sha256(encoded.encode()).hexdigest()
         require(fixture or approved_sha256 == case_hash, "Clinical approval for this exact case hash is required")
@@ -139,17 +166,35 @@ class AdaptivePlanner:
         require(type(version) is int and version == self._run.execution_version and self._run.state == "running", "Run is paused or execution version is stale")
         ledger = self._run.events()
         state = deepcopy(self._doc["initial_state"])
+        state_changed_at = {key: 0 if value else None for key, value in state.items()}
         changes = {action["action"]: action["set_state"] for action in self._doc["actions"]}
         published = set()
         for item in ledger:
             payload = item["payload"]
             if item["type"] == "doctor_action" and payload["phase"] == "confirmed":
-                state.update(changes.get(payload["action"], {}))
+                for key, value in changes.get(payload["action"], {}).items():
+                    if state[key] != value:
+                        state[key] = value
+                        state_changed_at[key] = item["simulation_time_ms"]
             elif item["type"] == "clinical_update" and payload["delivery_stage"] == "published":
                 event = self._events.get(payload["scenario_event_id"])
                 if event and payload["summary"] == event["summary"] and payload["resource_ref"] == self._bindings[event["resource_key"]]:
                     published.add(event["id"])
-        return ledger, state, published, self._run.simulation_time_ms
+                    for key, value in event.get("set_state", {}).items():
+                        if state[key] != value:
+                            state[key] = value
+                            state_changed_at[key] = item["simulation_time_ms"]
+        return ledger, state, state_changed_at, published, self._run.simulation_time_ms
+
+    @staticmethod
+    def _scheduled_at(event, state_changed_at):
+        schedule = event.get("schedule")
+        if not schedule or schedule["basis"] == "simulation_time":
+            return event["earliest_ms"]
+        if schedule["basis"] == "state_transition":
+            changed_at = state_changed_at[schedule["state_ref"]]
+            return None if changed_at is None else changed_at + schedule["delay_ms"]
+        return None
 
     @staticmethod
     def _eligible(event, state, mode):
@@ -189,7 +234,7 @@ class AdaptivePlanner:
                 old, receipt = self._requests[request_id]
                 require(old == request, "Conflicting proposal request ID")
                 return deepcopy(receipt)
-            ledger, state, published, now = self._context(expected_version)
+            ledger, state, _state_changed_at, published, now = self._context(expected_version)
             mode = ledger[0]["payload"]["mode"]
             self._prune(expected_version, state, published, now, mode)
             event = self._events.get(event_id)
@@ -218,13 +263,14 @@ class AdaptivePlanner:
         authoritative publication receipt, not an announcement, marks delivery.
         """
         with self._lock:
-            ledger, state, published, now = self._context(expected_version)
+            ledger, state, state_changed_at, published, now = self._context(expected_version)
             mode = ledger[0]["payload"]["mode"]
             self._prune(expected_version, state, published, now, mode)
             result = []
             for event in self._doc["events"]:
-                if event["kind"] == "clinical_consequence" and event["id"] not in published and now >= event["earliest_ms"] and self._eligible(event, state, mode):
-                    result.append(self._plan(event, event["earliest_ms"], expected_version, [], "Frozen state/time rule; independent of performance"))
+                scheduled_at = self._scheduled_at(event, state_changed_at)
+                if event["kind"] == "clinical_consequence" and event["id"] not in published and scheduled_at is not None and now >= scheduled_at and self._eligible(event, state, mode):
+                    result.append(self._plan(event, scheduled_at, expected_version, [], "Frozen state/time rule; independent of performance"))
             result.sort(key=lambda item: item["scheduled_at_ms"])
             result.extend(deepcopy(plan) for plan in self._pending.values() if plan["scheduled_at_ms"] <= now)
             return result
