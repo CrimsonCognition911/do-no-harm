@@ -4,7 +4,7 @@ Live emergency-medicine simulation and coaching around **OpenMRS 3**. The doctor
 
 ## Current status
 
-This is an **offline integration foundation**, not a working clinical evaluator. Implemented: frozen application-event contract 0.1, sample handshake messages, a sanitized permitted-voice projection, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side WebRTC/BFF interface tested with fixtures. OpenMRS, Agents API, Live audio, scored clinical use and CUA are **not connected yet**. No OpenAI API key is required for the offline components and they make no provider calls.
+This is an **offline integration foundation**, not a working clinical evaluator. Implemented: frozen application-event contract 0.1, sample handshake messages, a sanitized permitted-voice projection, an optional durable evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side WebRTC/BFF interface tested with fixtures. The [DNH-06 runner](RUNNER.md) connects allowlisted synthetic OpenMRS visits to scheduled text publication and verified read-back. Agents API, Live audio, scored clinical use and CUA still require live integration validation. No OpenAI API key is required for the offline components and they make no provider calls.
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
@@ -33,7 +33,7 @@ python3 -m unittest discover -s tests -v
 python3 -m backend.demo
 ```
 
-`GET /health` reports scaffold liveness, **not** provider or clinical readiness. `GET /ready` intentionally returns HTTP 503 until real integrations exist. Without configuration, `POST` is rejected. To enable local fixture sessions, set a random 32–256-character `DNH_OPERATOR_TOKEN` securely in the backend environment. It is an application bootstrap secret, **not an OpenAI API key**. See the [session API handoff](contracts/session-api.md) for endpoints, role capabilities and examples. There are no clinical write endpoints. The development server binds only to loopback and is not a production server.
+`GET /health` reports scaffold liveness, **not** provider or clinical readiness. `GET /ready` intentionally returns HTTP 503 until the remaining provider integrations exist. Without configuration, `POST` is rejected. To enable local fixture sessions, set a random 32–256-character `DNH_OPERATOR_TOKEN` securely in the backend environment. It is an application bootstrap secret, **not an OpenAI API key**. See the [session API handoff](contracts/session-api.md) for endpoints, role capabilities and examples. OpenMRS execution uses `backend.execution.OpenMRSExecutor`; only the execution capability can invoke the publication route, and payloads are resolved from frozen server plans. The development server binds only to loopback and is not a production server.
 
 ## Ownership
 
@@ -66,19 +66,21 @@ For local frontend development, use a server-side BFF that authenticates its own
 - Synthetic patients only. No production OpenMRS access or real patient material.
 - Keep keys in ignored local configuration; never put them in the frontend, issues, screenshots or commits. `.env`/`.env.local` are not loaded by this scaffold.
 - Do not claim clinical validation, certification, provider access or live integration from passing scaffold tests.
-- Next: build the Astra/Live adapters (#4) and durable OpenMRS publication (#6). Real API checks wait for secure key setup.
+- Next: build the Astra/Live adapters (#4). Provider checks wait for secure key setup.
 
 ## Offline run controller
 
 `python3 -m backend.demo` runs a scripted **non-clinical fixture** through the actual controller: observation, confirmed-action receipt, provisional finding, pause, coaching and resume. It prints participant-visible events and verifies blocked forged confirmation, premature review and stale action paths. It does not evaluate a doctor, generate a case, call an AI model or operate OpenMRS.
 
-- `Run(..., resource_refs=...)` is created by a trusted backend adapter. The allowlist is fixed for this prototype; real resource creation/mapping is still pending.
-- `record(...)` records evidence, not orders or event injections. Events and returned snapshots are detached copies; the ledger is append-only within the process, **not durable or tamper-proof storage**.
+- `Run(..., resource_refs=...)` is created by a trusted backend adapter. The optional runner binds this allowlist to actual DNH-02 manifest UUIDs.
+- `record(...)` records evidence, not orders or event injections. Events and returned snapshots are detached copies; the configured runner also appends evidence to SQLite. Default offline runs remain in-memory; the database is not a tamper-proof audit service.
 - `request_pause()` immediately gates new action/update receipts, freezes simulated time and advances the execution version. Both `execution` and `audio` must acknowledge the new version before the run becomes `paused`. The execution adapter must stop scheduling and reconcile/drain in-flight writes; the audio adapter must stop/flush playback. The controller cannot do those external operations itself. Missing acknowledgments leave it safely blocked; timeout/recovery is not implemented yet.
 - `begin_coaching()` requires acknowledged pause and permanently marks the attempt assisted. Only then is `review_allowed` true. Assessment mode moves to debrief and cannot resume that attempt. Coached mode can request resume; adapters must first finish teach-back and revoke/drain read-only CUA access. New-version execution/audio readiness acknowledgments restart time, excluding the paused interval.
 - New stale-version events fail. An exact retry of an already accepted event returns its original receipt without executing or appending anything again.
 - Raw findings stay examiner-only even during coaching. Live may speak only `permitted_voice_update` packets from `GET /api/runs/{run_id}/voice`. Do not send the examiner ledger to Live or the doctor UI.
 
-`backend/adaptation.py` adds frozen case/rubric/policy hashes, bounded optional challenge selection, confirmed-action state preconditions, stale-work rejection and independent due-consequence planning. `contracts/adaptive-fixture.json` supplies two scripted performance paths for engineering tests, **not** a reviewed emergency case. Plans are labelled `planned_not_published`; there is no OpenMRS execution. See the handoff for the review gate and integration boundaries.
+`backend/adaptation.py` adds frozen case/rubric/policy hashes, bounded optional challenge selection, confirmed-action state preconditions, stale-work rejection and independent due-consequence planning. `contracts/adaptive-fixture.json` supplies two scripted performance paths for engineering tests, **not** a reviewed emergency case. Plans remain `planned_not_published` until `backend.execution.OpenMRSExecutor` revalidates them against the current server-owned run and synthetic visit binding.
 
-This completes the authored-and-reviewed case package in #3 and the shared application contract in #1. The control-plane portion of #6 exists offline. Next backend work is durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.
+The DNH-06 executor serializes publications through a mode-0600 SQLite receipt ledger, uses a stable OpenMRS marker to recover an ambiguous network failure without duplicating the encounter, reads the encounter back from the bound patient and visit, and only then records participant-visible `published` evidence. The session service rejects reuse of a visit after restart, retaining evidence and requiring a fresh synthetic run. Client-selected or non-due events, wrong-run bindings, stale versions and paused runs cannot write. OpenMRS/model failures request a pause without adding an evaluation finding; a speech interruption alone does not mutate simulation state. `openmrs-config/test_live.py` includes the real local OpenMRS write/read-back gate.
+
+The implementation and operational limits are documented in [RUNNER.md](RUNNER.md). DNH-06 completion still requires the live publication and chart-rendering acceptance checks; offline tests do not establish those results. The Astra/Live provider path remains in #4.

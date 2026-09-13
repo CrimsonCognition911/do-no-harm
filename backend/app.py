@@ -1,4 +1,4 @@
-"""Loopback-only fixture API: no clinical execution or provider connections."""
+"""Loopback session API with optional allowlisted synthetic OpenMRS execution."""
 
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 from time import monotonic
+from threading import Event, Thread
 from urllib.parse import parse_qs, urlsplit
 
 
@@ -59,13 +60,13 @@ class Handler(BaseHTTPRequestHandler):
                 "integrations": {
                     "agents_api": "not_connected",
                     "gpt_live": "not_connected",
-                    "openmrs": "not_connected",
+                    "openmrs": "configured_synthetic_runner" if self.server.sessions is not None and self.server.sessions._runner_factory is not None else "not_connected",
                 },
             })
         elif path == "/ready":
             self.send_json(503, {
                 "ready": False,
-                "reason": "Clinical runtime and provider integrations are not implemented yet.",
+                "reason": "Live clinical runtime and provider integrations have not been validated.",
             })
         elif path == "/api/contracts/events":
             schema = json.loads((ROOT / "contracts" / "events.schema.json").read_text())
@@ -140,20 +141,51 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def create_server(port=8000, *, operator_token=None, clock=monotonic):
-    sessions = SessionService(operator_token, clock=clock) if operator_token is not None else None
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+class SessionHTTPServer(ThreadingHTTPServer):
+    def server_close(self):
+        if getattr(self, "runner_stop", None) is not None:
+            self.runner_stop.set()
+            self.sessions.stop_execution()
+            self.runner_thread.join(timeout=2)
+        super().server_close()
+
+
+def create_server(port=8000, *, operator_token=None, clock=monotonic, runner_factory=None):
+    sessions = SessionService(operator_token, clock=clock, runner_factory=runner_factory) if operator_token is not None else None
+    server = SessionHTTPServer(("127.0.0.1", port), Handler)
     server.sessions = sessions
+    if runner_factory is not None:
+        if sessions is None:
+            server.server_close()
+            raise ValueError("Runner requires authenticated sessions")
+        server.runner_stop = Event()
+        def schedule():
+            while not server.runner_stop.wait(0.1):
+                try:
+                    sessions.tick()
+                except Exception:
+                    # Unexpected storage/adapter failure must stop clinical time.
+                    sessions.stop_execution()
+                    return
+        server.runner_thread = Thread(target=schedule, daemon=True)
+        server.runner_thread.start()
     return server
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--runner-config", type=Path, help="Operator-owned synthetic run allowlist")
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error("--port must be between 0 and 65535")
-    with create_server(args.port, operator_token=os.environ.get("DNH_OPERATOR_TOKEN")) as server:
+    factory = None
+    if args.runner_config:
+        from backend.runner import RunnerFactory
+        factory = RunnerFactory.from_file(args.runner_config)
+        if not os.environ.get("DNH_OPERATOR_TOKEN"):
+            parser.error("Runner configuration requires DNH_OPERATOR_TOKEN")
+    with create_server(args.port, operator_token=os.environ.get("DNH_OPERATOR_TOKEN"), runner_factory=factory) as server:
         print(f"DO NO HARM local API: http://127.0.0.1:{server.server_port}", flush=True)
         try:
             server.serve_forever()

@@ -1,9 +1,10 @@
-"""In-memory run controller for offline integration development.
+"""Versioned run controller with optional durable evidence and external-write gates.
 
 All methods are trusted server-side calls, not HTTP handlers. Adapters must
 authenticate callers, bind resource references to a synthetic run, and authorize
-commands before invoking them. Acknowledgments assert real adapter quiescence;
-this module neither stops an external write nor controls an audio device itself.
+commands before invoking them. External write admission blocks premature
+quiescence acknowledgments. Audio acknowledgments must still come from an
+adapter that actually flushes playback.
 """
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ from backend.contracts import ACTORS, validate_event
 
 
 class Run:
-    def __init__(self, run_id, *, resource_refs, mode="coached", clock=monotonic):
+    def __init__(self, run_id, *, resource_refs, mode="coached", clock=monotonic, evidence_sink=None):
         if not isinstance(run_id, str) or not run_id:
             raise ValueError("run_id must be nonempty")
         if mode not in ("coached", "assessment"):
@@ -32,6 +33,8 @@ class Run:
         self._events, self._by_id, self._requests = [], {}, {}
         self._acks = set()
         self._publications = {}
+        self._evidence_sink = evidence_sink
+        self._external_active, self._external_uncertain = set(), set()
         self._state_event()
 
     @property
@@ -79,6 +82,17 @@ class Run:
         }
 
     def _append(self, event):
+        if self._evidence_sink is not None:
+            try:
+                self._evidence_sink(deepcopy(event))
+            except Exception:
+                # Disk failure cannot leave an unaudited running simulation.
+                if self._started_at is not None:
+                    self._elapsed += self._clock() - self._started_at
+                    self._started_at = None
+                self._state = "failed"
+                self._version += 1
+                raise
         self._events.append(event)
         self._by_id[event["event_id"]] = event
 
@@ -121,6 +135,8 @@ class Run:
     def acknowledge_pause(self, component, *, expected_version):
         """Execution must drain/reconcile writes; audio must stop/flush playback."""
         with self._lock:
+            if component == "execution" and (self._external_active or self._external_uncertain):
+                raise ValueError("External writes are not quiescent and reconciled")
             self._acknowledge(component, expected_version, "pause_requested", "paused")
 
     def _acknowledge(self, component, version, requested, completed):
@@ -152,9 +168,27 @@ class Run:
     def acknowledge_resume(self, component, *, expected_version):
         """Adapters assert readiness under the new version before time restarts."""
         with self._lock:
+            if component == "execution" and (self._external_active or self._external_uncertain):
+                raise ValueError("External writes are not quiescent and reconciled")
             if self._state == "running" and not self._acks:
                 raise ValueError("No resume was requested")
             self._acknowledge(component, expected_version, "resume_requested", "running")
+
+    def admit_external_write(self, key, *, expected_version):
+        """Register admitted work before I/O; pause never acknowledges it early."""
+        with self._lock:
+            self._check(expected_version, {"running"})
+            if self._external_uncertain:
+                raise ValueError("Unresolved external write")
+            self._external_active.add(key)
+
+    def finish_external_write(self, key, *, verified):
+        with self._lock:
+            self._external_active.discard(key)
+            if verified:
+                self._external_uncertain.discard(key)
+            else:
+                self._external_uncertain.add(key)
 
     def end(self, *, expected_version):
         with self._lock:

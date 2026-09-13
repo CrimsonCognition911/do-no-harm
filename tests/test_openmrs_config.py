@@ -2,6 +2,8 @@
 
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 import unittest
 
 
@@ -63,6 +65,17 @@ class EDConfigurationTests(unittest.TestCase):
         for path in ("https://example.org", "../session", "/session"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 client.request("GET", path)
+
+    def test_documented_live_test_command_imports_application_modules(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [sys.executable, "openmrs-config/test_live.py", "-h"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

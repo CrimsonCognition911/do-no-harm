@@ -86,6 +86,8 @@ The adapter probe requires `CrimsonSithria/emr-webmcp` at `323cc14ac09678bbdefa4
 
 Doctor can enter encounter/form observations; simulation can add encounters/observations; review has only explicit read privileges. Stock O3 can show mutation buttons to review users; backend denial is the boundary. Roles are instance-wide, not patient/run-scoped. DNH-06 must validate run bindings and enforce controlled access.
 
-Unsupported here: automated triage, custom ED queue transitions, drug/orderable selection, order-result linkage, administration, physiology, delayed-event scheduling, pause enforcement, historical replay and clinical scoring. These await the approved case and other workstreams. Forms and fixture content require clinical review before a scored demonstration.
+`backend.execution.OpenMRSExecutor` consumes server-generated adaptive plans against this manifest's synthetic patient/visit bindings. It serializes each scenario event through a durable SQLite receipt, recovers ambiguous accepted writes by a stable observation marker, verifies the encounter and observation through REST read-back, and only then records publication evidence. The live test above exercises that boundary using the simulation identity.
+
+Unsupported here: automated triage, custom ED queue transitions, drug/orderable selection, order-result linkage, administration, physiology and clinical scoring. The application controller owns scheduling, pause enforcement and evidence replay; the configuration pack does not. Forms and fixture content require clinical review before a scored demonstration.
 
 References: [O3 distribution](https://github.com/openmrs/openmrs-distro-referenceapplication), [O3 form builder](https://github.com/openmrs/openmrs-esm-form-builder), [pinned adapter](https://github.com/CrimsonSithria/emr-webmcp/tree/323cc14ac09678bbdefa4950d4c584fba9e50b46/packages/adapters/openmrs). Actual installed resources and browser behavior determined this configuration.

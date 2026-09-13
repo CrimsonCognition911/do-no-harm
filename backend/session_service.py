@@ -32,18 +32,19 @@ def digest(token):
 
 
 class SessionService:
-    """All run access is serialized here; no external I/O occurs under the lock.
+    """Capability-bound sessions; external publication runs outside the service lock.
 
-    Only offline fixtures can be created. Real patient/visit binding, provider
-    sessions and clinical writes are intentionally unavailable through this API.
+    Default sessions are offline. An operator-owned RunnerFactory enables
+    allowlisted synthetic OpenMRS runs; doctor inputs never bind resources.
     """
-    def __init__(self, operator_token, *, clock=monotonic):
+    def __init__(self, operator_token, *, clock=monotonic, runner_factory=None):
         if not isinstance(operator_token, str) or not 32 <= len(operator_token) <= 256:
             raise ValueError("Operator token must have 32 to 256 characters")
         self._operator = digest(operator_token)
         self._clock, self._lock = clock, RLock()
         self._runs, self._capabilities, self._creations = {}, {}, {}
         self.instance_id = str(uuid4())
+        self._runner_factory = runner_factory
 
     def _identity(self, token):
         if not isinstance(token, str) or not 1 <= len(token) <= 256:
@@ -61,6 +62,31 @@ class SessionService:
             self._identity(token)
 
     def handle(self, method, parts, query, token, body):
+        # External I/O must not hold the service lock: pause freezes time while
+        # admitted work drains, and execution acknowledgment checks quiescence.
+        if method == "POST" and len(parts) == 2 and parts[1] in {"publish", "reconcile"}:
+            with self._lock:
+                role, bound_run = self._identity(token)
+                if role != "execution" or bound_run != parts[0]:
+                    raise APIError(403, "forbidden")
+                if query:
+                    raise APIError(422, "unexpected_query")
+                entry = self._runs[bound_run]
+                if "executor" not in entry:
+                    raise APIError(409, "runner_not_configured")
+                fields(body, {"event_id", "execution_version"} if parts[1] == "publish" else {"event_id"})
+                request = deepcopy(body)
+            from backend.execution import ExternalPublicationError
+            try:
+                if parts[1] == "publish":
+                    receipt = entry["executor"].publish_due(request["event_id"], expected_version=request["execution_version"])
+                else:
+                    receipt = entry["executor"].reconcile(request["event_id"])
+                return 200, receipt
+            except (ExternalPublicationError, OSError):
+                raise APIError(503, "external_publication_unverified")
+            except ValueError:
+                raise APIError(409, "publication_rejected")
         with self._lock:
             role, bound_run = self._identity(token)
             if not parts and method == "POST":
@@ -109,6 +135,26 @@ class SessionService:
             if query:
                 raise APIError(422, "unexpected_query")
             route = parts[1]
+            if route in {"proposals", "due", "failure"}:
+                if role != "examiner":
+                    raise APIError(403, "forbidden")
+                if "planner" not in entry:
+                    raise APIError(409, "runner_not_configured")
+                try:
+                    if route == "proposals":
+                        fields(body, {"request_id", "event_id", "finding_id", "at_ms", "difficulty", "reason", "execution_version"})
+                        args = {key: value for key, value in body.items() if key != "execution_version"}
+                        result = entry["planner"].propose(**args, expected_version=body["execution_version"])
+                        self._runner_factory.ledger.append(run_id, "adaptive_choice", result)
+                    elif route == "due":
+                        fields(body, {"execution_version"})
+                        result = entry["planner"].due_events(expected_version=body["execution_version"])
+                    else:
+                        fields(body, {"component", "execution_version"})
+                        result = entry["executor"].external_failure(body["component"], expected_version=body["execution_version"])
+                    return 200, result
+                except ValueError as error:
+                    raise APIError(409, "runner_request_rejected") from error
             if route == "actions":
                 if role != "doctor":
                     raise APIError(403, "forbidden")
@@ -167,6 +213,32 @@ class SessionService:
                 return self._command(entry, role, route, body, lambda **args: method(role, **args))
             raise APIError(404, "not_found")
 
+    def tick(self):
+        """Server scheduler; only the authoritative planner selects due work."""
+        from backend.execution import ExternalPublicationError
+        with self._lock:
+            entries = [entry for entry in self._runs.values() if "executor" in entry]
+        for entry in entries:
+            run = entry["run"]
+            if run.state != "running":
+                continue
+            version = run.execution_version
+            try:
+                for plan in entry["planner"].due_events(expected_version=version):
+                    entry["executor"].publish_due(plan["event_id"], expected_version=version)
+            except ValueError:
+                # Pause or precondition change invalidated this scheduler tick.
+                continue
+            except (ExternalPublicationError, OSError):
+                run.request_technical_pause(expected_version=run.execution_version)
+
+    def stop_execution(self):
+        with self._lock:
+            for entry in self._runs.values():
+                run = entry["run"]
+                if run.state in {"running", "resume_requested"}:
+                    run.request_technical_pause(expected_version=run.execution_version)
+
     def _create(self, body):
         fields(body, {"request_id", "mode"})
         key = request_key(body["request_id"])
@@ -181,8 +253,16 @@ class SessionService:
             raise APIError(503, "local_session_capacity")
         run_id = str(uuid4())
         # No arbitrary OpenMRS resource identifiers may be supplied by HTTP clients.
-        run = Run(run_id, resource_refs=(), mode=body["mode"], clock=self._clock)
-        self._runs[run_id] = {"run": run, "commands": {}}
+        if self._runner_factory is None:
+            run = Run(run_id, resource_refs=(), mode=body["mode"], clock=self._clock)
+            entry = {"run": run, "commands": {}}
+        else:
+            try:
+                entry = self._runner_factory.create(key, run_id, body["mode"], self._clock)
+            except ValueError as error:
+                raise APIError(409, "run_not_allowlisted_or_already_used") from error
+            run = entry["run"]
+        self._runs[run_id] = entry
         expires = self._clock() + 3600
         tokens = {}
         for role in ("doctor", "examiner", "execution", "audio"):
@@ -195,7 +275,7 @@ class SessionService:
 
     def _snapshot(self, run):
         return {"run_id": run.events(audience="participant")[0]["run_id"],
-                "instance_id": self.instance_id, "environment": "offline_fixture",
+                "instance_id": self.instance_id, "environment": getattr(run, "environment", "offline_fixture"),
                 "state": run.state, "execution_version": run.execution_version,
                 "simulation_time_ms": run.simulation_time_ms,
                 "assisted": run.assisted, "review_allowed": run.review_allowed}
