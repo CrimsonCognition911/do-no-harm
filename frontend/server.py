@@ -165,11 +165,16 @@ class OpenAILive:
             "session": {
                 "model": "gpt-live-1",
                 "instructions": (
-                    "You are the voice interface for a synthetic emergency-medicine simulation. "
-                    "Treat speech as intent, never as confirmed clinical execution. Delegate requests needing "
-                    "case reasoning or authoritative state. Announce only application-confirmed participant-visible "
-                    "updates. During a pause, stop clinical speech and wait for an explicit running update. "
-                    "Never request or reveal rubrics, examiner findings, or unreleased events."
+                    "You are a conversational emergency-medicine professor guiding a synthetic simulation. "
+                    "Ask one brief, non-leading question at a time as the doctor proceeds: clarify the working "
+                    "diagnosis, current priority, evidence, reassessment, or next step. After a meaningful completed "
+                    "statement, decision, or application-confirmed chart action, use client delegation so the Astra "
+                    "examiner can evaluate the current evidence. Never grade a partial transcript or treat speech "
+                    "as confirmed clinical execution. Use only the participant-safe response returned by the "
+                    "application: acknowledge supported reasoning, ask for clarification when evidence is insufficient, "
+                    "or announce a requested pause. Announce only application-confirmed participant-visible updates. "
+                    "During pause_requested or paused, stop clinical speech; teach only after the application explicitly "
+                    "authorizes coaching. Never request or reveal rubrics, raw examiner findings, or unreleased events."
                 ),
                 "delegation": {"type": "client"},
             },
@@ -216,12 +221,12 @@ class ExaminerBridge:
         if not self.available:
             raise BFFError(503, "examiner_bridge_unavailable")
         status, result = self.client.request(self.url, method="POST", token=self.token,
-                                             body={"type": "live_delegation", "run_id": run_id, **body}, timeout=20)
+                                             body={"type": "live_delegation", "run_id": run_id, **body}, timeout=60)
         if status != 200 or not isinstance(result, dict):
             raise BFFError(status if 400 <= status < 600 else 502, "examiner_bridge_failed")
         safe = {"status": result.get("status"), "spoken_update": result.get("spoken_update"),
                 "evidence_ids": result.get("evidence_ids", [])}
-        if safe["status"] not in {"complete", "needs_clarification", "unavailable"} or not bounded_text(safe["spoken_update"], maximum=2000):
+        if safe["status"] not in {"complete", "needs_clarification", "pause_requested", "unavailable"} or not bounded_text(safe["spoken_update"], maximum=2000):
             raise BFFError(502, "invalid_examiner_result")
         if not isinstance(safe["evidence_ids"], list) or not all(bounded_text(item, maximum=256) for item in safe["evidence_ids"]):
             raise BFFError(502, "invalid_examiner_result")
@@ -233,7 +238,7 @@ class ExaminerBridge:
     def delivery(self, run_id, body):
         if not self.available:
             raise BFFError(503, "examiner_bridge_unavailable")
-        status, result = self.client.request(self.url, method="POST", token=self.token,
+        status, result = self.client.request(self.url.rstrip("/") + "/delivery", method="POST", token=self.token,
                                              body={"type": "delivery_ack", "run_id": run_id, **body}, timeout=10)
         if status != 200:
             raise BFFError(status if 400 <= status < 600 else 502, "delivery_ack_failed")
@@ -306,8 +311,15 @@ class DoctorHandler(BaseHTTPRequestHandler):
                 if not query.startswith("after=") or not query[6:].isascii() or not query[6:].isdecimal():
                     raise BFFError(422, "invalid_cursor")
                 feed = self.server.gateway.feed(int(query[6:]))
-                self.server.execution_version = feed.get("execution_version")
+                next_version = feed.get("execution_version")
+                if (type(next_version) is int
+                        and self.server.execution_version != next_version):
+                    self.server.participant_event_ids.clear()
+                    self.server.publications.clear()
+                self.server.execution_version = next_version
                 for event in feed["events"]:
+                    if event.get("execution_version") != next_version:
+                        continue
                     self.server.participant_event_ids.add(event["event_id"])
                     if event["type"] == "clinical_update" and event["payload"]["delivery_stage"] == "published":
                         self.server.publications[event["event_id"]] = event["execution_version"]

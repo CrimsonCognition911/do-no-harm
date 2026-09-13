@@ -70,11 +70,13 @@ For an actual voice session, set `OPENAI_API_KEY` only in the BFF environment.
 If it is absent, the UI reports provider unavailability while the evidence feed
 continues to work. Provider access has not been proven by fixture tests.
 
-The dependency-owned examiner bridge is optional until its service is ready:
+To connect the BFF delegation to the backend coordinator, start the backend with its
+OpenAI key, saved `DNH_EXAMINER_AGENT_ID` and fixture-session operator token. Then
+give this BFF the run-scoped **examiner** capability as its bridge token:
 
 ```sh
-export DNH_EXAMINER_BRIDGE_URL='https://configured-bridge.example/requests'
-export DNH_EXAMINER_BRIDGE_TOKEN='<run-scoped bridge credential>'
+export DNH_EXAMINER_BRIDGE_URL='http://127.0.0.1:8010/api/examiner'
+export DNH_EXAMINER_BRIDGE_TOKEN='<run-scoped examiner capability>'
 ```
 
 Both values are required together. A delegation request contains its opaque
@@ -90,9 +92,15 @@ IDs taken from the BFF's authorized feed. The response must be:
 ```
 
 Only those three fields cross back to Live. Evidence references outside the
-authorized participant feed fail closed. Display acknowledgments use the same
-endpoint with `type: delivery_ack`, and are accepted only for a publication the
-BFF observed.
+authorized participant feed fail closed. The backend chooses the rubric, treats
+speech as unconfirmed context, records provisional findings privately, and returns
+frozen professor copy for a next-step question or clarification. A concern returns
+`pause_requested`; the BFF does not race that text into Live while the authoritative
+pause closes audio. Post-pause teaching remains behind the acknowledged coaching gate.
+The BFF allows up to 60 seconds for this model round trip. Display acknowledgments
+use the `/delivery` child endpoint with `type: delivery_ack`, and are accepted only
+for a current published event the BFF observed. They do not prove speech or audio
+playback.
 
 ## OpenMRS interaction hook
 
@@ -118,7 +126,7 @@ npm run test:red
 ```
 
 The tests are explicitly fixture/mock tests and make no OpenAI, examiner or
-OpenMRS provider calls. Completing the real voice → examiner → voice proof still
-depends on the examiner bridge and a provider-enabled environment; keep the
-GitHub issue open until that evidence and the corresponding authoritative
-delivery receipts exist.
+OpenMRS provider calls. The backend delegation endpoint now exists, but completing
+the real voice → examiner → voice proof still requires a provider-enabled browser
+run and authoritative append/playback receipts; keep the GitHub issue open until
+that evidence exists.

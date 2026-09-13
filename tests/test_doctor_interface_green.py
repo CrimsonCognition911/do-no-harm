@@ -65,6 +65,10 @@ class DoctorInterfaceGreenTests(unittest.TestCase):
         sent = client.calls[0][1]
         self.assertEqual(sent["body"]["session"]["model"], "gpt-live-1")
         self.assertEqual(sent["body"]["session"]["delegation"], {"type": "client"})
+        instructions = sent["body"]["session"]["instructions"]
+        self.assertIn("professor", instructions)
+        self.assertIn("Ask one brief", instructions)
+        self.assertIn("partial transcript", instructions)
         self.assertEqual(sent["token"], "provider-secret")
         self.assertEqual(result, {"session": {"id": "live_session"}, "transport": {"type": "webrtc", "sdp": "answer"}})
         self.assertEqual(live.hangup("live_session"), {"ended": True})
@@ -101,9 +105,69 @@ class DoctorInterfaceGreenTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(set(safe), {"status", "spoken_update", "evidence_ids"})
         self.assertNotIn("hidden", json.dumps(safe))
+        self.assertEqual(bridge_client.calls[0][1]["timeout"], 60)
         server.publications["event-1"] = 1
         delivery = {"event_id": "event-1", "execution_version": 1, "stage": "displayed"}
         self.assertEqual(self.request(server, "POST", "/api/delivery", delivery, csrf=csrf), (200, {"accepted": True}))
+        self.assertEqual(
+            bridge_client.calls[1][0], "https://examiner.example/bridge/delivery"
+        )
+
+    def test_bff_discards_prior_version_evidence_after_resume(self):
+        class VersionedGateway(FakeGateway):
+            def __init__(self):
+                super().__init__()
+                self.version = 1
+
+            def feed(self, after):
+                item = event(
+                    "doctor_action", f"evidence-v{self.version}", self.version,
+                    {"action": "review ECG", "phase": "observed", "source": "browser"},
+                    actor="doctor",
+                )
+                return {
+                    "run_id": self.run_id, "instance_id": "fixture", "state": "running",
+                    "execution_version": self.version, "simulation_time_ms": 10,
+                    "assisted": False, "review_allowed": False,
+                    "next_cursor": after + 1, "events": [item],
+                }
+
+        gateway = VersionedGateway()
+        bridge_client = RecordingClient([
+            (200, {"status": "complete", "spoken_update": "Question one?", "evidence_ids": []}),
+            (200, {"status": "complete", "spoken_update": "Question two?", "evidence_ids": []}),
+        ])
+        server = create_server(
+            0, gateway=gateway,
+            bridge=ExaminerBridge("https://examiner.example/bridge", "secret", client=bridge_client),
+        )
+        self.addCleanup(server.server_close)
+        thread = threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": .01}, daemon=True
+        )
+        thread.start()
+        self.addCleanup(thread.join, 2)
+        self.addCleanup(server.shutdown)
+        _, bootstrap = self.request(server, "GET", "/api/bootstrap")
+        csrf = bootstrap["csrf"]
+        self.request(server, "GET", "/api/events?after=0")
+        delegation = {
+            "delegation_id": "d1", "offset_ms": 0, "execution_version": 1,
+            "transcript": [],
+        }
+        self.request(server, "POST", "/api/delegations", delegation, csrf=csrf)
+        gateway.version = 2
+        self.request(server, "GET", "/api/events?after=1")
+        self.request(
+            server, "POST", "/api/delegations",
+            {**delegation, "delegation_id": "d2", "execution_version": 2}, csrf=csrf,
+        )
+        self.assertEqual(
+            bridge_client.calls[0][1]["body"]["participant_event_ids"], ["evidence-v1"]
+        )
+        self.assertEqual(
+            bridge_client.calls[1][1]["body"]["participant_event_ids"], ["evidence-v2"]
+        )
 
     def request(self, server, method, path, body=None, *, csrf=None, origin=True, headers=None):
         request_headers = dict(headers or {})

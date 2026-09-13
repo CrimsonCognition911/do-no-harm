@@ -102,6 +102,10 @@ export class VoiceController {
       execution_version: this.executionVersion,
       transcript: this.transcript.map((item) => ({ ...item })),
     });
+    // A concern has already moved the authoritative run toward pause. Do not
+    // race a commentary append against the poll that closes/flushed WebRTC;
+    // post-pause teaching requires the separately acknowledged coaching path.
+    if (result?.status === "pause_requested") return;
     if (!result || !text(result.spoken_update, 2000) || version !== this.executionVersion ||
         generation !== this.generation || !this.consent || !this.connected || this.state !== "running" || this.fault) return;
     this.sendLive({

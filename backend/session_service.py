@@ -61,6 +61,39 @@ class SessionService:
         with self._lock:
             self._identity(token)
 
+    def examiner_evidence(self, token, run_id, *, expected_version, evidence_ids=None):
+        """Return a bounded, current-version examiner view for a bound provider tool.
+
+        ``None`` returns a payload-free index. A list returns exactly those events.
+        This is an internal application boundary, not an HTTP endpoint.
+        """
+        with self._lock:
+            role, bound_run = self._identity(token)
+            if role != "examiner" or bound_run != run_id or run_id not in self._runs:
+                raise APIError(403, "forbidden")
+            run = self._runs[run_id]["run"]
+            if type(expected_version) is not int or expected_version != run.execution_version:
+                raise APIError(409, "stale_execution_version")
+            current = [event for event in run.events(audience="examiner")
+                       if event["execution_version"] == expected_version]
+            if len(current) > 200:
+                raise APIError(503, "examiner_evidence_window_exceeded")
+            if evidence_ids is None:
+                return {
+                    **self._snapshot(run),
+                    "evidence": [{key: event[key] for key in (
+                        "event_id", "type", "actor", "simulation_time_ms", "occurred_at", "visibility"
+                    )} for event in current],
+                }
+            if (not isinstance(evidence_ids, list) or not 1 <= len(evidence_ids) <= 20
+                    or any(not isinstance(item, str) or not item for item in evidence_ids)
+                    or len(set(evidence_ids)) != len(evidence_ids)):
+                raise APIError(422, "invalid_evidence_ids")
+            by_id = {event["event_id"]: event for event in current}
+            if any(item not in by_id for item in evidence_ids):
+                raise APIError(404, "evidence_not_found_in_current_version")
+            return {**self._snapshot(run), "events": [deepcopy(by_id[item]) for item in evidence_ids]}
+
     def handle(self, method, parts, query, token, body):
         # External I/O must not hold the service lock: pause freezes time while
         # admitted work drains, and execution acknowledgment checks quiescence.
