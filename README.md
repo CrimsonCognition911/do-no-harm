@@ -4,9 +4,11 @@ Live emergency-medicine simulation and coaching around **OpenMRS 3**. The doctor
 
 ## Current status
 
-This is an **offline backend foundation**, not a working clinical evaluator. Implemented: a local read-only HTTP scaffold, draft event validation, an in-memory evidence ledger and a versioned run controller with pause/resume and assistance gates. OpenMRS, Agents API, Live audio, HTTP event ingestion, adaptive clinical simulation, scoring and CUA are **not connected yet**. No API key is required for the offline components and they make no provider calls.
+This is an **offline backend foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, and a frozen-policy adaptive planner tested with non-clinical fixtures. OpenMRS, Agents API, Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and they make no provider calls.
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
+
+The selected demo is an **acute MI (anterior STEMI)**. Its [case YAML and clinical-review rubric](cases/stemi/README.md) are drafted but unapproved and disabled for scored use; they are not yet compiled into the runtime.
 
 ## Quick start
 
@@ -25,7 +27,7 @@ python3 -m unittest discover -s tests -v
 python3 -m backend.demo
 ```
 
-`GET /health` reports scaffold liveness, **not** provider or clinical readiness. `GET /ready` intentionally returns HTTP 503 until real integrations exist. `POST` is rejected; there are no clinical mutation endpoints yet. The development server binds only to loopback and is not a production server.
+`GET /health` reports scaffold liveness, **not** provider or clinical readiness. `GET /ready` intentionally returns HTTP 503 until real integrations exist. Without configuration, `POST` is rejected. To enable local fixture sessions, set a random 32–256-character `DNH_OPERATOR_TOKEN` securely in the backend environment. It is an application bootstrap secret, **not an OpenAI API key**. See the [session API handoff](contracts/session-api.md) for endpoints, role capabilities and examples. There are no clinical write endpoints. The development server binds only to loopback and is not a production server.
 
 ## Ownership
 
@@ -49,9 +51,9 @@ Use separate feature branches (for example `codex/examiner` and `codex/doctor-ex
 
 The schema is served for frontend development. `backend/contracts.py` validates draft 0.1 shape and checks source against a **trusted adapter-supplied producer**. `backend/runtime.py` constructs event identity context/timestamps, checks registered resource references and same-run evidence membership, deduplicates exact retries, rejects conflicting IDs, and filters participant snapshots. Automated findings remain provisional. These checks do not establish clinical evidence sufficiency or prove that an OpenMRS write happened.
 
-**Authentication, HTTP event ingestion, streaming and durable persistence are not implemented.** A client cannot grant itself authority by setting `producer`, `actor`, `visibility`, a resource allowlist or an event-feed audience. Future adapters must authenticate the connection, derive those values server-side and bind resources to a synthetic run before invoking internal methods. Never directly map an arbitrary request body to `Run.record()` or `Run.events()`.
+`backend/session_service.py` now authenticates local, expiring run-scoped capabilities for doctor, examiner, execution and audio roles. It exposes action ingestion, examiner findings, controller commands and polling replay through the [documented HTTP contract](contracts/session-api.md). The HTTP layer never accepts a client-selected `producer`, `actor`, visibility, resource allowlist or event-feed audience. Only non-clinical fixture sessions can be created; real patient bindings are unavailable. Production login/consent, provider delegation, streaming, durable persistence and real clinical adapters are still pending. Never directly map an arbitrary request body to `Run.record()` or `Run.events()`.
 
-For local frontend development, proxy the required paths to `http://127.0.0.1:8000`; no wildcard CORS policy is enabled. Agree the transport and session-creation endpoints under #1 before wiring live integrations.
+For local frontend development, use a server-side BFF that authenticates its own browser user and maps them to the assigned run. Keep privileged capabilities out of doctor-facing handlers. The BFF makes controlled server-to-server requests to `http://127.0.0.1:8000`; direct browser Origin headers are rejected and no wildcard CORS policy is enabled. Review the handoff together under #1 before wiring live integrations.
 
 ## Safety and next work
 
@@ -71,4 +73,6 @@ For local frontend development, proxy the required paths to `http://127.0.0.1:80
 - New stale-version events fail. An exact retry of an already accepted event returns its original receipt without executing or appending anything again.
 - Raw findings stay examiner-only even during coaching. A separately authorized, participant-safe coaching projection still needs implementation; do not send the examiner ledger to Live or the doctor UI.
 
-This advances #1 and the control-plane portion of #6; neither issue is complete. Next backend work is authenticated transport, the reviewed case/policy runner and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.
+`backend/adaptation.py` adds frozen case/rubric/policy hashes, bounded optional challenge selection, confirmed-action state preconditions, stale-work rejection and independent due-consequence planning. `contracts/adaptive-fixture.json` supplies two scripted performance paths for engineering tests, **not** a reviewed emergency case. Plans are labelled `planned_not_published`; there is no OpenMRS execution. See the handoff for the review gate and integration boundaries.
+
+This advances #1 and the control-plane portion of #6; neither issue is complete. Next backend work is the clinician-reviewed case, durable OpenMRS publication and Astra/Live adapters. Frontend and OpenMRS configuration remain in @tijoseymathew's lane.

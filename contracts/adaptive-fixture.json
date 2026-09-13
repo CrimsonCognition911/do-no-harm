@@ -1,0 +1,23 @@
+{
+  "format": "dnh.compiled-case/0.1",
+  "id": "non-clinical-adaptation-fixture",
+  "version": "1",
+  "description": "Engineering fixture only. Not an emergency case, clinical protocol, reviewed rubric or treatment advice. Times and difficulty levels are arbitrary test values.",
+  "rubric": {
+    "id": "fixture-rubric",
+    "version": "1",
+    "criteria": [{"id": "fixture-reassessment", "description": "Scripted finding for testing branch selection; not a clinical judgment."}]
+  },
+  "policy": {"version": "1", "min_difficulty": 1, "max_difficulty": 2, "max_pending_challenges": 1},
+  "initial_state": {"problem_unresolved": true, "test_requested": false},
+  "actions": [
+    {"action": "resolve fixture problem", "set_state": {"problem_unresolved": false}},
+    {"action": "request fixture test", "set_state": {"test_requested": true}}
+  ],
+  "events": [
+    {"id": "unresolved-consequence", "kind": "clinical_consequence", "summary": "Fixture consequence: unresolved state persists.", "resource_key": "state", "earliest_ms": 5000, "latest_ms": 5000, "requires": {"problem_unresolved": true}, "difficulty": 0, "criterion_id": null, "outcome": null, "allowed_modes": ["coached", "assessment"]},
+    {"id": "delayed-result", "kind": "clinical_consequence", "summary": "Fixture result available.", "resource_key": "result", "earliest_ms": 2000, "latest_ms": 10000, "requires": {"test_requested": true}, "difficulty": 0, "criterion_id": null, "outcome": null, "allowed_modes": ["coached", "assessment"]},
+    {"id": "harder-challenge", "kind": "optional_challenge", "summary": "Fixture additional decision point.", "resource_key": "challenge", "earliest_ms": 1000, "latest_ms": 10000, "requires": {"problem_unresolved": true}, "difficulty": 2, "criterion_id": "fixture-reassessment", "outcome": "acceptable", "allowed_modes": ["coached", "assessment"]},
+    {"id": "paced-challenge", "kind": "optional_challenge", "summary": "Fixture lower-load decision point.", "resource_key": "challenge", "earliest_ms": 1000, "latest_ms": 10000, "requires": {"problem_unresolved": true}, "difficulty": 1, "criterion_id": "fixture-reassessment", "outcome": "concern", "allowed_modes": ["coached", "assessment"]}
+  ]
+}
