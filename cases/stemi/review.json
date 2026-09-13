@@ -1,0 +1,23 @@
+{
+  "review_type": "user_clinical_content_approval",
+  "status": "approved_by_user",
+  "recorded_at_utc": "2026-09-13T04:12:47Z",
+  "reviewer_github": "CrimsonSithria",
+  "approval_source": "Project conversation",
+  "approval_statement": "i aoorive the review",
+  "scope": "Approval of the MI authoring draft content below. Not permission to merge a pull request, certify competence, enable scored use, or assert live integration.",
+  "approved_authoring_artifacts": {
+    "cases/stemi/case.yaml": "8a407cc338f77a19d19dfccecd605b9bf81cc25c19e7f0b5ba77ac804043369f",
+    "cases/stemi/README.md": "fb4187270b5fd6959701b3848e3270a8c0d0853d3ff6eef0d1ef88855c8a98c7"
+  },
+  "frozen_artifact_note": "The approved files retain their pre-review wording and unset approval metadata to preserve the exact reviewed bytes. This separate record supersedes their pending content-review status only.",
+  "compiled_runtime_artifact_sha256": "1c843acfa26a9ac43973a2536294898625f01f836203e2a20c4485e1e19e7650",
+  "runtime_enabled": false,
+  "scored_use_allowed": false,
+  "remaining_release_gates": [
+    "Supply and verify the ECG teaching asset if demonstrating image interpretation.",
+    "Pin the local STEMI pathway and resolve actual OpenMRS metadata, units and supported workflows.",
+    "Resolve frozen runtime bindings and verify equivalence against the target OpenMRS instance.",
+    "Verify actual publication/read-back, evidence access, pause quiescence and provider integration."
+  ]
+}
