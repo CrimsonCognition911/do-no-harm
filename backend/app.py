@@ -11,6 +11,17 @@ from urllib.parse import parse_qs, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_HANDSHAKE_FIELDS = {
+    "contract_version",
+    "status",
+    "owner",
+    "frontend_reviewer",
+    "note",
+    "participant_event_types",
+    "participant_feed",
+    "permitted_voice_updates",
+    "handshake",
+}
 if __package__ in (None, ""):
     sys.path.insert(0, str(ROOT))
 from backend.session_service import APIError, SessionService
@@ -72,7 +83,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, schema)
         elif path == "/api/contracts/handshake":
             handshake = json.loads((ROOT / "contracts" / "samples" / "handshake.json").read_text())
-            self.send_json(200, handshake)
+            self.send_json(200, {
+                key: handshake[key] for key in PUBLIC_HANDSHAKE_FIELDS
+            })
         elif path == "/api/contracts/voice-update":
             schema = json.loads((ROOT / "contracts" / "voice-update.schema.json").read_text())
             self.send_json(200, schema)

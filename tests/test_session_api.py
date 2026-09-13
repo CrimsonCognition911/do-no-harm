@@ -120,18 +120,25 @@ class SessionAPITests(unittest.TestCase):
         self.assertEqual(self.request("POST", self.path + "/findings", self.tokens["examiner"], finding)[0], 200)
         self.assertEqual(self.request("GET", self.path + "/voice", self.tokens["doctor"])[0], 403)
         self.assertEqual(self.request("GET", self.path + "/voice", self.tokens["examiner"])[0], 403)
-        self.assertEqual(self.request("GET", self.path + "/voice?after=0", self.tokens["audio"])[0], 422)
         status, _, body = self.request("GET", self.path + "/voice", self.tokens["audio"])
         self.assertEqual(status, 200)
         self.assertEqual(body["updates"], [])
+        self.assertEqual(body["next_cursor"], 0)
         self.command("pause")
         for role in ("execution", "audio"):
             self.request("POST", self.path + "/acks", self.tokens[role],
                          {"request_id": "pause-ack", "transition": "pause", "execution_version": 2})
-        updates = self.request("GET", self.path + "/voice", self.tokens["audio"])[2]["updates"]
+        response = self.request("GET", self.path + "/voice?after=0", self.tokens["audio"])[2]
+        updates = response["updates"]
         self.assertEqual(len(updates), 1)
+        self.assertEqual(response["next_cursor"], 1)
         self.assertEqual(updates[0]["kind"], "permitted_voice_update")
         self.assertEqual(updates[0]["say"], "Simulation paused. Wait for examiner instructions.")
+        consumed = self.request("GET", self.path + "/voice?after=1", self.tokens["audio"])[2]
+        self.assertEqual(consumed["updates"], [])
+        self.assertEqual(consumed["next_cursor"], 1)
+        self.assertEqual(self.request("GET", self.path + "/voice?after=2", self.tokens["audio"])[0], 409)
+        self.assertEqual(self.request("GET", self.path + "/voice?after=-1", self.tokens["audio"])[0], 422)
         blob = json.dumps(updates)
         self.assertNotIn("Hidden answer", blob)
         self.assertNotIn("criterion_id", blob)

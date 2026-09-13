@@ -74,12 +74,18 @@ class ScaffoldTests(unittest.TestCase):
         status, _, handshake = self.request("GET", "/api/contracts/handshake")
         self.assertEqual(status, 200)
         self.assertEqual(handshake["status"], "frozen")
-        public = json.dumps({
-            "participant_feed": handshake["participant_feed"],
-            "permitted_voice_updates": handshake["permitted_voice_updates"],
-        })
-        self.assertNotIn("criterion_id", public)
-        self.assertNotIn("Hidden rubric", public)
+        self.assertNotIn("events", handshake)
+        self.assertNotIn("examiner_only_event_types", handshake)
+        self.assertNotIn("unreleased_events", handshake)
+        public = json.dumps(handshake)
+        for hidden in (
+            "criterion_id",
+            "rationale",
+            "requires_clinician_review",
+            "authored_not_published",
+            "troponin_result",
+        ):
+            self.assertNotIn(hidden, public)
         status, _, voice = self.request("GET", "/api/contracts/voice-update")
         self.assertEqual(status, 200)
         self.assertEqual(voice["properties"]["kind"]["const"], "permitted_voice_update")

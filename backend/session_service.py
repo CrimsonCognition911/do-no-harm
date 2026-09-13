@@ -94,15 +94,26 @@ class SessionService:
                 if parts[1:] == ["voice"]:
                     if role != "audio":
                         raise APIError(403, "forbidden")
-                    if query:
-                        raise APIError(422, "unexpected_query")
+                    if set(query) - {"after"} or len(query.get("after", [])) > 1:
+                        raise APIError(422, "invalid_cursor")
+                    cursor = query.get("after", ["0"])[0]
+                    if not cursor.isascii() or not cursor.isdecimal() or len(cursor) > 10:
+                        raise APIError(422, "invalid_cursor")
+                    after = int(cursor)
                     updates = []
                     for event in run.events(audience="participant"):
                         try:
                             updates.append(project_permitted_voice_update(event))
                         except ValueError:
                             continue
-                    return 200, {**self._snapshot(run), "updates": updates}
+                    if after > len(updates):
+                        raise APIError(409, "cursor_out_of_range")
+                    page = updates[after:after + 200]
+                    return 200, {
+                        **self._snapshot(run),
+                        "updates": page,
+                        "next_cursor": after + len(page),
+                    }
                 raise APIError(422 if query else 404, "invalid_request")
             if method != "POST" or len(parts) != 2:
                 raise APIError(404, "not_found")

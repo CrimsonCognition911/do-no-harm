@@ -206,8 +206,9 @@
     {
       "step": 5,
       "from": "audio_or_live_adapter",
-      "route": "GET /api/runs/{run_id}/voice",
+      "route": "GET /api/runs/{run_id}/voice?after=0",
       "capability": "audio",
+      "next_cursor": 1,
       "response_item": {
         "schema_version": "0.1",
         "kind": "permitted_voice_update",
@@ -218,7 +219,7 @@
         "say": "A diagnostic ECG report is available in the chart.",
         "evidence_ids": []
       },
-      "note": "Speak only these packets. Do not narrate UI observations, findings, hidden rubric or authored-but-unpublished events."
+      "note": "Speak only these packets, then persist next_cursor for the next poll or reconnect. Do not narrate UI observations, findings, hidden rubric or authored-but-unpublished events."
     }
   ]
 }
