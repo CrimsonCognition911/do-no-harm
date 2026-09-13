@@ -173,6 +173,6 @@ to Live or the participant feed. Both transport and planner currently remain
 offline components; wiring them to reviewed cases and OpenMRS is remaining #6 work.
 
 No issue is closed by these fixtures. #1 still needs collaborator agreement and
-provider/delegation lifecycle wiring; #3 now has an [MI authoring draft](../cases/stemi/README.md)
-but still needs clinical sign-off and compilation; #4 needs secure API access and real provider proof; #6 needs verified
+provider/delegation lifecycle wiring; #3 now has a [user-approved MI authoring draft](../cases/stemi/review.json)
+but still needs its release checks and runtime compilation; #4 needs verified API access and real provider proof; #6 needs verified
 OpenMRS publication, durable evidence and operational failure handling.

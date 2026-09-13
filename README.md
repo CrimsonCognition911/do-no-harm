@@ -8,7 +8,7 @@ This is an **offline backend foundation**, not a working clinical evaluator. Imp
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
-The selected demo is an **acute MI (anterior STEMI)**. Its [case YAML and clinical-review rubric](cases/stemi/README.md) are drafted but unapproved and disabled for scored use; they are not yet compiled into the runtime.
+The selected demo is an **acute MI (anterior STEMI)**. You approved the [case YAML and clinical-review rubric](cases/stemi/README.md); the separate [approval record](cases/stemi/review.json) binds the exact reviewed files by hash and supersedes their frozen pre-review status text. Runtime/scored use remains disabled until the ECG asset, local protocol, OpenMRS mappings and compiled runtime are verified.
 
 ## Quick start
 
