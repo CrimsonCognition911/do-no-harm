@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DO NO HARM · Doctor voice</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Synthetic emergency simulation</p>
+        <h1>Doctor voice</h1>
+      </div>
+      <div class="status" aria-live="polite">
+        <span id="state-dot" class="dot"></span>
+        <span id="state">Connecting to run…</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="voice-card" aria-labelledby="voice-title">
+        <div>
+          <p class="eyebrow">GPT-Live-1</p>
+          <h2 id="voice-title">Conversation</h2>
+          <p id="voice-detail">Voice is off. Your chart remains the clinical workspace.</p>
+        </div>
+        <div class="voice-orb" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="controls">
+          <button id="start" class="primary" disabled>Start voice</button>
+          <button id="interrupt" disabled>Stop playback</button>
+          <button id="end" disabled>End voice</button>
+        </div>
+        <label class="consent">
+          <input id="consent" type="checkbox">
+          <span>I consent to microphone/transcript use for this synthetic session. Data is retained only in this browser session.</span>
+        </label>
+      </section>
+
+      <section class="workspace">
+        <div class="panel chart-note">
+          <p class="eyebrow">OpenMRS workspace</p>
+          <h2>Chart stays in OpenMRS</h2>
+          <p>This panel records only explicit chart-integration events. A click is an observation, never proof that care was executed.</p>
+          <div class="correction">
+            <label id="correction-label" for="correction">Correct or clarify your last statement</label>
+            <div><input id="correction" maxlength="4000" placeholder="Say what you intended…"><button id="record-correction">Record intent</button></div>
+          </div>
+        </div>
+
+        <div class="panel feed-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Evidence stream</p><h2>Action feed</h2></div>
+            <span id="connection-badge" class="badge">Offline</span>
+          </div>
+          <ol id="feed" class="feed" aria-live="polite"></ol>
+          <p id="empty-feed" class="empty">Waiting for participant-visible events…</p>
+        </div>
+      </section>
+    </main>
+
+    <audio id="remote-audio" autoplay playsinline></audio>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

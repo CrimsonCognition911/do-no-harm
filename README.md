@@ -4,7 +4,7 @@ Live emergency-medicine simulation and coaching around **OpenMRS 3**. The doctor
 
 ## Current status
 
-This is an **offline backend foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, and a frozen-policy adaptive planner tested with non-clinical fixtures. OpenMRS, Agents API, Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and they make no provider calls.
+This is an **offline integration foundation**, not a working clinical evaluator. Implemented: draft event validation, an in-memory evidence ledger, versioned pause/resume controls, an opt-in authenticated local session API, a frozen-policy adaptive planner, and a doctor-side GPT-Live-1 WebRTC/BFF interface tested with non-clinical fixtures. OpenMRS, Agents API, provider-backed Live audio, reviewed clinical simulation, scoring and CUA are **not connected yet**. No OpenAI API key is required for the offline components and their tests make no provider calls.
 
 See the [build plan](grand_rounds_build_doc.md) and [GitHub issues](https://github.com/CrimsonCognition911/do-no-harm/issues). Issues remain open until their actual acceptance criteria are met.
 
