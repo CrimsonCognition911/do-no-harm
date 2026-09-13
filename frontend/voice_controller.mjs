@@ -64,6 +64,7 @@ export class VoiceController {
           delegation_id: null, content: `Participant-visible context restored after reconnect: ${recent}` });
       }
       if (this.state === "resume_requested") this.acknowledgeAudio("resume", this.executionVersion);
+      this.setPlayback(this.state === "running", { flush: false });
       if (this.state === "running") {
         for (const item of this.events.values()) {
           if (item.type === "clinical_update" && item.payload.delivery_stage === "published") this.announce(item);
@@ -89,13 +90,15 @@ export class VoiceController {
   async handleDelegation(event) {
     const delegationId = event.delegation?.id;
     if (!text(delegationId, 256) || event.delegation?.target !== "client") return;
+    const version = this.executionVersion;
     const result = await this.delegate({
       delegation_id: delegationId,
       offset_ms: Number.isInteger(event.offset_ms) && event.offset_ms >= 0 ? event.offset_ms : 0,
       execution_version: this.executionVersion,
       transcript: this.transcript.map((item) => ({ ...item })),
     });
-    if (!result || !text(result.spoken_update, 2000)) return;
+    if (!this.connected || this.state !== "running" || version !== this.executionVersion ||
+        !result || !text(result.spoken_update, 2000)) return;
     this.sendLive({
       type: "session.commentary.append",
       event_id: `delegation-result:${crypto.randomUUID()}`,
@@ -131,20 +134,14 @@ export class VoiceController {
       return;
     }
     if (QUIET_STATES.has(next)) {
+      this.pendingAnnouncements.length = 0;
+      this.connected = false;
       this.setPlayback(false, { flush: true });
-      if (this.connected) {
-        this.sendLive({
-          type: "session.instructions.append",
-          event_id: `pause:${event.event_id}`,
-          delegation_id: null,
-          content: "Stop speaking now. The simulation is paused. Do not announce clinical updates until the application reports that it is running.",
-        });
-      }
       if (next === "pause_requested") await this.acknowledgeAudio("pause", event.execution_version);
       return;
     }
     if (next === "running") {
-      this.setPlayback(true, { flush: false });
+      this.setPlayback(this.connected, { flush: false });
       for (const item of this.events.values()) {
         if (item.type === "clinical_update" && item.payload.delivery_stage === "published") this.announce(item);
       }
@@ -164,12 +161,14 @@ export class VoiceController {
   }
 
   async playbackObserved() {
-    const event = this.pendingAnnouncements.shift();
-    if (event) await this.acknowledgeDelivery(event, "spoken");
+    // Generic media progress cannot identify which clinical update was heard.
+    // Leave spoken delivery unconfirmed until an event-correlated receipt exists.
+    return false;
   }
 
   disconnected() {
     this.connected = false;
+    this.pendingAnnouncements.length = 0;
     this.setPlayback(false, { flush: true });
     this.onStatus("technical_pause");
   }

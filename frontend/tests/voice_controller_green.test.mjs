@@ -22,6 +22,8 @@ const update = { type: "clinical_update", event_id: "result-1", visibility: "par
 
 test("keeps timestamped partial transcripts and explicit corrections for client delegation", async () => {
   const { controller, calls } = harness();
+  controller.connected = true;
+  controller.state = "running";
   controller.onLiveEvent({ type: "session.input_transcript.delta", delta: "Order", start_ms: 10, end_ms: 80 });
   controller.addCorrection("I meant review the order");
   await controller.onLiveEvent({ type: "session.delegation.created", offset_ms: 100, delegation: { id: "opaque", target: "client" } });
@@ -32,14 +34,14 @@ test("keeps timestamped partial transcripts and explicit corrections for client 
   assert.equal(calls.live.at(-1).delegation_id, "opaque");
 });
 
-test("renders publication before announcing and records display/audio separately", async () => {
+test("renders publication before announcing and leaves spoken delivery unconfirmed", async () => {
   const { controller, calls } = harness();
   await controller.applyFeed({ execution_version: 1, events: [state("running", "running"), update] });
   controller.onLiveEvent({ type: "session.started" });
   assert.deepEqual(calls.delivery, [["result-1", "displayed"]]);
   assert.match(calls.live.at(-1).content, /Confirmed synthetic chart update/);
   await controller.playbackObserved();
-  assert.deepEqual(calls.delivery, [["result-1", "displayed"], ["result-1", "spoken"]]);
+  assert.deepEqual(calls.delivery, [["result-1", "displayed"]]);
 });
 
 test("correlates observations with a separate authoritative confirmation", () => {

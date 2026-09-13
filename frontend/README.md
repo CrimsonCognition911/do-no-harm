@@ -105,3 +105,15 @@ OpenMRS provider calls. Completing the real voice → examiner → voice proof s
 depends on the examiner bridge and a provider-enabled environment; keep the
 GitHub issue open until that evidence and the corresponding authoritative
 delivery receipts exist.
+
+## Review fixes: audio delivery and stopping
+
+Media playback progress is not evidence that a particular clinical update was heard.
+Only displayed receipts are submitted; spoken delivery remains unconfirmed until
+an event-correlated provider receipt is integrated. Do not grade hearing an update
+from elapsed audio time.
+
+Pause, interrupt, and feed failure close the local peer, stop media tracks, detach
+audio, clear pending announcements, and request provider hangup. Reconnect voice
+creates a fresh session once the feed is healthy and the run is running or awaiting
+audio resume. Local voice failure does not itself pause the authoritative run.

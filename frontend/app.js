@@ -22,7 +22,8 @@ let peer;
 let channel;
 let microphone;
 let pollTimer;
-let lastAudioTick = 0;
+let connectionEpoch = 0;
+let feedHealthy = false;
 let liveSessionId;
 
 async function api(path, options = {}) {
@@ -56,7 +57,7 @@ function setPlayback(enabled, { flush }) {
   elements.audio.muted = !enabled;
   if (!enabled) elements.audio.pause();
   else elements.audio.play().catch(() => {});
-  if (flush) lastAudioTick = elements.audio.currentTime || 0;
+  if (flush) closeTransport();
 }
 
 function renderEvent(event) {
@@ -116,50 +117,72 @@ async function waitForIce(connection) {
 }
 
 async function connectVoice() {
-  if (!controller.consent) return;
+  if (!controller.consent || !feedHealthy || !["running", "resume_requested"].includes(controller.state)) return;
+  const epoch = ++connectionEpoch;
   elements.start.disabled = true;
   elements.detail.textContent = "Requesting microphone access…";
-  microphone = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  const acquired = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  if (epoch !== connectionEpoch) { acquired.getTracks().forEach((track) => track.stop()); return; }
+  microphone = acquired;
   peer = new RTCPeerConnection();
   const connection = peer;
   channel = peer.createDataChannel("oai-events");
   channel.addEventListener("message", ({ data }) => {
-    try { controller.onLiveEvent(JSON.parse(data)); } catch { /* malformed provider events are ignored */ }
+    if (connection !== peer) return;
+    try { Promise.resolve(controller.onLiveEvent(JSON.parse(data))).catch(() => {}); } catch { /* malformed provider events are ignored */ }
   });
-  peer.addEventListener("track", (event) => { elements.audio.srcObject = event.streams[0]; });
+  peer.addEventListener("track", (event) => {
+    if (connection === peer) elements.audio.srcObject = event.streams[0];
+  });
   peer.addEventListener("connectionstatechange", () => {
-    if (["failed", "disconnected"].includes(connection.connectionState)) {
+    if (connection === peer && ["failed", "disconnected"].includes(connection.connectionState)) {
       disconnectVoice({ clearContext: false });
       elements.start.textContent = "Reconnect voice";
-      elements.detail.textContent = "Voice disconnected. The run is in a technical pause; reconnect does not repeat backend work.";
+      elements.detail.textContent = "Voice disconnected. Local voice is stopped; reconnect does not repeat backend work.";
     }
   });
   microphone.getTracks().forEach((track) => peer.addTrack(track, microphone));
-  await peer.setLocalDescription(await peer.createOffer());
-  await waitForIce(peer);
-  const result = await api("/api/live/session", { method: "POST", body: JSON.stringify({ sdp: peer.localDescription.sdp }) });
+  await connection.setLocalDescription(await connection.createOffer());
+  await waitForIce(connection);
+  if (epoch !== connectionEpoch) return;
+  const result = await api("/api/live/session", { method: "POST", body: JSON.stringify({ sdp: connection.localDescription.sdp }) });
+  if (epoch !== connectionEpoch) {
+    await api("/api/live/hangup", { method: "POST", body: JSON.stringify({ session_id: result.session.id }) }).catch(() => {});
+    return;
+  }
   liveSessionId = result.session.id;
-  await peer.setRemoteDescription({ type: "answer", sdp: result.transport.sdp });
+  await connection.setRemoteDescription({ type: "answer", sdp: result.transport.sdp });
   elements.interrupt.disabled = false;
   elements.end.disabled = false;
   elements.detail.textContent = "Listening. You can interrupt or correct at any time; backend work continues independently.";
 }
 
-function disconnectVoice({ clearContext }) {
+function closeTransport() {
+  connectionEpoch += 1;
   if (liveSessionId) {
     api("/api/live/hangup", { method: "POST", body: JSON.stringify({ session_id: liveSessionId }) }).catch(() => {});
     liveSessionId = undefined;
   }
-  microphone?.getTracks().forEach((track) => track.stop());
-  channel?.close();
-  peer?.close();
-  elements.audio.srcObject = null;
+  const previousPeer = peer;
+  const previousChannel = channel;
+  const previousMicrophone = microphone;
   peer = channel = microphone = undefined;
-  controller.disconnected();
-  if (clearContext) controller.clearConversation();
+  previousMicrophone?.getTracks().forEach((track) => track.stop());
+  elements.audio.srcObject?.getTracks().forEach((track) => track.stop());
+  elements.audio.pause();
+  elements.audio.muted = true;
+  elements.audio.srcObject = null;
+  previousChannel?.close();
+  previousPeer?.close();
+  elements.start.textContent = "Reconnect voice";
   elements.start.disabled = !controller.consent;
   elements.interrupt.disabled = true;
   elements.end.disabled = true;
+}
+
+function disconnectVoice({ clearContext }) {
+  controller.disconnected();
+  if (clearContext) controller.clearConversation();
 }
 
 function endVoice() {
@@ -171,9 +194,11 @@ async function poll() {
   try {
     const feed = await api(`/api/events?after=${cursor}`);
     await controller.applyFeed(feed);
+    feedHealthy = true;
     cursor = feed.next_cursor;
   } catch (error) {
-    setStatus("technical_pause");
+    feedHealthy = false;
+    disconnectVoice({ clearContext: false });
     elements.detail.textContent = `Evidence feed unavailable: ${error.message}. No clinical penalty should be inferred.`;
   } finally {
     pollTimer = setTimeout(poll, 750);
@@ -193,9 +218,8 @@ elements.start.addEventListener("click", () => connectVoice().catch((error) => {
 }));
 elements.end.addEventListener("click", endVoice);
 elements.interrupt.addEventListener("click", () => {
-  setPlayback(false, { flush: true });
-  sendLive({ type: "session.instructions.append", event_id: `doctor-interrupt:${crypto.randomUUID()}`, delegation_id: null,
-    content: "Stop current playback. The doctor interrupted; keep delegated backend work pending unless separately corrected." });
+  disconnectVoice({ clearContext: false });
+  elements.detail.textContent = "Voice interrupted. Select Reconnect voice to continue; backend work remains pending.";
 });
 elements.recordCorrection.addEventListener("click", async () => {
   const value = elements.correction.value.trim();
@@ -204,12 +228,6 @@ elements.recordCorrection.addEventListener("click", async () => {
     event_id: `speech-correction:${crypto.randomUUID()}`, execution_version: controller.executionVersion, action: value, kind: "speech",
   }) });
   elements.correction.value = "";
-});
-elements.audio.addEventListener("timeupdate", () => {
-  if (!elements.audio.muted && elements.audio.currentTime > lastAudioTick) {
-    lastAudioTick = elements.audio.currentTime;
-    controller.playbackObserved();
-  }
 });
 window.addEventListener("dnh:chart-interaction", ({ detail }) => {
   if (!detail || typeof detail.action !== "string" || !detail.action.trim()) return;
