@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 async function browserHarness() {
-  const calls = { requests: [], stopped: 0, closed: 0, played: 0 };
+  const calls = { requests: [], liveEvents: [], stopped: 0, closed: 0, played: 0 };
   const elements = new Map();
   const track = () => ({ stop: () => calls.stopped++ });
   const stream = () => ({ getTracks: () => [track()] });
@@ -14,11 +14,12 @@ async function browserHarness() {
     textContent: "", value: "", addEventListener(name, fn) { this.listeners[name] = fn; },
     pause() {}, play() { calls.played++; return Promise.resolve(); }, append() {} });
   let failFeed = false;
+  let failDelegation = false;
   let feed = { execution_version: 1, events: [state("start", "running", 1)], next_cursor: 1 };
   let peer;
   class Peer {
     constructor() { peer = this; this.listeners = {}; this.iceGatheringState = "complete"; }
-    createDataChannel() { this.channel = { readyState: "open", listeners: {}, send() {}, close() {},
+    createDataChannel() { this.channel = { readyState: "open", listeners: {}, send(value) { calls.liveEvents.push(JSON.parse(value)); }, close() {},
       addEventListener(name, fn) { this.listeners[name] = fn; } }; return this.channel; }
     addEventListener(name, fn) { this.listeners[name] = fn; }
     addTrack() {}
@@ -39,7 +40,12 @@ async function browserHarness() {
     fetch: async (path, options = {}) => {
       calls.requests.push({ path, body: options.body && JSON.parse(options.body), audioAttached: !!elements.get("#remote-audio")?.srcObject });
       if (path.startsWith("/api/events") && failFeed) throw new Error("offline");
-      const result = path === "/api/bootstrap" ? { csrf: "test", live_available: true }
+      if (path === "/api/delegations" && failDelegation) throw new Error("examiner timeout");
+      const result = path === "/api/bootstrap" ? {
+        csrf: "test",
+        live_available: true,
+        assessment_welcome: "Welcome to the synthetic emergency assessment.",
+      }
         : path.startsWith("/api/events") ? feed
         : path === "/api/technical-pause" ? {state: "pause_requested", execution_version: 2}
         : path === "/api/live/session" ? { session: { id: "live-test" }, transport: { sdp: "answer" } } : {};
@@ -50,7 +56,8 @@ async function browserHarness() {
   const api = await vm.runInNewContext(`(async () => { ${source}\nreturn { controller, connectVoice, poll }; })()`, sandbox);
   await api.poll();
   api.controller.setConsent(true);
-  return { ...api, calls, elements, setFeed: (value) => { feed = value; }, failFeed: () => { failFeed = true; }, peer: () => peer };
+  return { ...api, calls, elements, setFeed: (value) => { feed = value; }, failFeed: () => { failFeed = true; },
+    failDelegation: () => { failDelegation = true; }, peer: () => peer };
 }
 
 test("browser pause stops tracks and detaches audio before acknowledging; reconnect restores playback", async () => {
@@ -103,3 +110,43 @@ test("browser media progress never submits a spoken receipt", async () => {
   assert.equal(h.calls.requests.some((item) => item.path === "/api/delivery" && item.body.stage === "spoken"), false);
 });
 
+test("accepted typed correction is appended to the active Live session", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  h.elements.get("#correction").value = "I meant review the potassium order";
+  await h.elements.get("#record-correction").listeners.click();
+
+  assert.ok(h.calls.requests.some((item) => item.path === "/api/actions" && item.body.action === "I meant review the potassium order"));
+  assert.deepEqual(h.calls.liveEvents.at(-1), {
+    type: "session.instructions.append",
+    event_id: "speech-correction:test-id",
+    delegation_id: null,
+    content: "The doctor corrected the prior statement. Stop relying on it and delegate to the client now for current context.",
+  });
+});
+
+test("assessment welcome is spoken once after Live starts and is not replayed on reconnect", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  await h.elements.get("#end").listeners.click();
+  await h.connectVoice();
+
+  assert.deepEqual(h.calls.liveEvents.filter((event) => event.type === "session.commentary.append"), [{
+    type: "session.commentary.append",
+    event_id: "assessment-welcome:test-id",
+    delegation_id: null,
+    content: "Welcome to the synthetic emergency assessment.",
+  }]);
+});
+
+test("examiner transport failure latches an authoritative technical pause", async () => {
+  const h = await browserHarness();
+  await h.connectVoice();
+  h.failDelegation();
+  h.peer().channel.listeners.message({data: JSON.stringify({
+    type: "session.delegation.created", delegation: {id: "failed", target: "client"}, offset_ms: 0,
+  })});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(h.calls.requests.some(item => item.path === "/api/technical-pause"));
+  assert.equal(h.elements.get("#remote-audio").muted, true);
+});

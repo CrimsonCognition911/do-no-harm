@@ -67,6 +67,20 @@ test("late delegation replies are discarded after pause", async () => {
   assert.equal(calls.live.some(e => e.content === "stale result"), false);
 });
 
+test("typed correction invalidates an in-flight delegation reply", async () => {
+  const { controller, calls } = harness();
+  controller.setConsent(true);
+  controller.connected = true;
+  controller.state = "running";
+  let resolve;
+  controller.delegate = () => new Promise(r => { resolve = r; });
+  const pending = controller.handleDelegation({delegation: {id: "old", target: "client"}});
+  controller.addCorrection("I meant acquire the ECG now");
+  resolve({spoken_update: "stale result"});
+  await pending;
+  assert.equal(calls.live.some(e => e.content === "stale result"), false);
+});
+
 test("a concern pause signal is never raced into Live commentary", async () => {
   const { controller, calls } = harness();
   controller.setConsent(true);

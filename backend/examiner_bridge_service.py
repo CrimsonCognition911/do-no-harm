@@ -111,14 +111,14 @@ class ExaminerBridgeService:
     def __init__(
         self, session_service, *, examiner_agent_id, examiner_factory,
         compiled_case=ROOT / "cases" / "stemi" / "compiled.json",
-        provider_timeout=50,
+        provider_timeout=120,
     ):
         if session_service is None or not _text(examiner_agent_id, maximum=128):
             raise ValueError("Invalid examiner bridge configuration")
         if not callable(examiner_factory):
             raise ValueError("Invalid examiner factory")
         if (type(provider_timeout) not in (int, float)
-                or not 0 < provider_timeout <= 50):
+                or not 0 < provider_timeout <= 120):
             raise ValueError("Invalid examiner provider timeout")
         self._sessions = session_service
         self._agent_id = examiner_agent_id

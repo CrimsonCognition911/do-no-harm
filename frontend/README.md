@@ -25,6 +25,8 @@ Application contract **0.1 is frozen**. Use these files; do not guess field name
 
 - Full-duplex browser WebRTC connection, playback interruption, explicit
   provider hangup and reconnect.
+- A one-time synthetic STEMI assessment welcome appended only after the provider
+  reports `session.started`; it is not replayed after a voice reconnect.
 - Timestamped input/output transcript fragments plus explicit correction and
   teach-back entry. Fragments remain context; they do not become confirmed care.
 - Explicit OpenMRS integration events recorded as browser observations, and
@@ -68,7 +70,8 @@ run. This is not production user authentication.
 
 For an actual voice session, set `OPENAI_API_KEY` only in the BFF environment.
 If it is absent, the UI reports provider unavailability while the evidence feed
-continues to work. Provider access has not been proven by fixture tests.
+continues to work. Fixture tests do not prove provider access; the bounded
+real-provider acceptance run is recorded in `../DNH-05-LIVE-PROOF.md`.
 
 To connect the BFF delegation to the backend coordinator, start the backend with its
 OpenAI key, saved `DNH_EXAMINER_AGENT_ID` and fixture-session operator token. Then
@@ -97,7 +100,8 @@ speech as unconfirmed context, records provisional findings privately, and retur
 frozen professor copy for a next-step question or clarification. A concern returns
 `pause_requested`; the BFF does not race that text into Live while the authoritative
 pause closes audio. Post-pause teaching remains behind the acknowledged coaching gate.
-The BFF allows up to 60 seconds for this model round trip. Display acknowledgments
+The BFF allows up to 130 seconds for this model round trip; the backend stops provider
+work at 120 seconds. Display acknowledgments
 use the `/delivery` child endpoint with `type: delivery_ack`, and are accepted only
 for a current published event the BFF observed. They do not prove speech or audio
 playback.

@@ -217,7 +217,7 @@ def configured_examiner_bridge_factory(environ=None):
     from backend.examiner_bridge_service import ExaminerBridgeService
 
     # Keep the provider transport below the application/BFF deadline. The
-    # coordinator separately enforces a 50-second wall-clock result deadline.
+    # coordinator separately enforces a 120-second wall-clock result deadline.
     client = OpenAI(api_key=api_key, timeout=45.0, max_retries=0)
 
     def build(sessions):

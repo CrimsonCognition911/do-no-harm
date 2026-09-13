@@ -69,6 +69,10 @@ class DoctorInterfaceGreenTests(unittest.TestCase):
         self.assertIn("professor", instructions)
         self.assertIn("Ask one brief", instructions)
         self.assertIn("partial transcript", instructions)
+        self.assertIn("Delegation policy:", instructions)
+        self.assertIn("Backend tools:", instructions)
+        self.assertIn("Delegate to the backend when:", instructions)
+        self.assertIn("Do not delegate to the backend when:", instructions)
         self.assertEqual(sent["token"], "provider-secret")
         self.assertEqual(result, {"session": {"id": "live_session"}, "transport": {"type": "webrtc", "sdp": "answer"}})
         self.assertEqual(live.hangup("live_session"), {"ended": True})
@@ -91,6 +95,8 @@ class DoctorInterfaceGreenTests(unittest.TestCase):
 
         status, bootstrap = self.request(server, "GET", "/api/bootstrap")
         self.assertEqual(status, 200)
+        self.assertIn("DO NO HARM emergency medicine assessment", bootstrap["assessment_welcome"])
+        self.assertIn("58-year-old", bootstrap["assessment_welcome"])
         csrf = bootstrap["csrf"]
         self.assertNotIn("secret", json.dumps(bootstrap))
         status, result = self.request(server, "POST", "/api/live/session", {"sdp": "offer"}, csrf=csrf)
@@ -105,7 +111,7 @@ class DoctorInterfaceGreenTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(set(safe), {"status", "spoken_update", "evidence_ids"})
         self.assertNotIn("hidden", json.dumps(safe))
-        self.assertEqual(bridge_client.calls[0][1]["timeout"], 60)
+        self.assertEqual(bridge_client.calls[0][1]["timeout"], 130)
         server.publications["event-1"] = 1
         delivery = {"event_id": "event-1", "execution_version": 1, "stage": "displayed"}
         self.assertEqual(self.request(server, "POST", "/api/delivery", delivery, csrf=csrf), (200, {"accepted": True}))

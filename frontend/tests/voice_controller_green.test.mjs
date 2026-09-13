@@ -51,3 +51,21 @@ test("correlates observations with a separate authoritative confirmation", () =>
     evidence_ids: ["observed"], payload: { action: "labs submitted", phase: "confirmed", source: "openmrs_backend", resource_ref: "order" } };
   assert.equal(correlateActions([observed, confirmed])[0].confirmedBy.event_id, "confirmed");
 });
+
+test("shares only backend-confirmed chart actions with Live and requests delegation", async () => {
+  const { controller, calls } = harness();
+  controller.connected = true;
+  controller.state = "running";
+  const observed = { type: "doctor_action", event_id: "observed", visibility: "participant", execution_version: 1,
+    payload: { action: "clicked ECG", phase: "observed", source: "browser" } };
+  const confirmed = { type: "doctor_action", event_id: "confirmed", visibility: "participant", execution_version: 1,
+    payload: { action: "confirm_ecg_acquisition", phase: "confirmed", source: "openmrs_backend", resource_ref: "obs" } };
+  await controller.applyFeed({execution_version: 1, state: "running", events: [observed, confirmed]});
+  assert.equal(calls.live.some(event => event.content?.includes("clicked ECG")), false);
+  assert.deepEqual(calls.live.find(event => event.event_id === "confirmed-action:confirmed"), {
+    type: "session.instructions.append",
+    event_id: "confirmed-action:confirmed",
+    delegation_id: null,
+    content: "Application-confirmed synthetic chart action: confirm_ecg_acquisition. Delegate to the client now so the examiner can reassess current evidence.",
+  });
+});

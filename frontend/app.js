@@ -24,6 +24,9 @@ let microphone;
 let pollTimer;
 let liveSessionId;
 let voiceAttempt = 0;
+let assessmentWelcome;
+let welcomeState = "not_sent";
+let welcomeEventId;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -36,7 +39,9 @@ async function api(path, options = {}) {
 }
 
 function sendLive(event) {
-  if (channel?.readyState === "open") channel.send(JSON.stringify(event));
+  if (channel?.readyState !== "open") return false;
+  channel.send(JSON.stringify(event));
+  return true;
 }
 
 function setStatus(status) {
@@ -91,7 +96,8 @@ const controller = new VoiceController({
   sendLive,
   requestTechnicalPause: (body) => api("/api/technical-pause", {method: "POST", body: JSON.stringify(body)}),
   delegate: (body) => api("/api/delegations", { method: "POST", body: JSON.stringify(body) }).catch((error) => {
-    elements.detail.textContent = `Examiner unavailable: ${error.message}. The conversation remains unscored.`;
+    void controller.technicalPause();
+    elements.detail.textContent = `Examiner unavailable: ${error.message}. The attempt is unscored and the simulation is entering technical pause.`;
     return null;
   }),
   acknowledgeDelivery: (event, stage) => api("/api/delivery", {
@@ -137,7 +143,24 @@ async function connectVoice() {
   channel = peer.createDataChannel("oai-events");
   channel.addEventListener("message", ({ data }) => {
     try {
-      if (peer === connection) Promise.resolve(controller.onLiveEvent(JSON.parse(data))).catch(() => controller.technicalPause());
+      const event = JSON.parse(data);
+      if (peer === connection) {
+        Promise.resolve(controller.onLiveEvent(event)).catch(() => controller.technicalPause());
+        if (event.type === "session.started" && welcomeState === "not_sent" && assessmentWelcome) {
+          welcomeEventId ||= `assessment-welcome:${crypto.randomUUID()}`;
+          if (sendLive({
+            type: "session.commentary.append",
+            event_id: welcomeEventId,
+            delegation_id: null,
+            content: assessmentWelcome,
+          })) welcomeState = "pending";
+        } else if (event.type === "session.commentary.appended" && event.client_event_id === welcomeEventId) {
+          welcomeState = "accepted";
+        } else if (event.type === "error" && event.error?.client_event_id === welcomeEventId) {
+          welcomeState = "failed";
+          void controller.technicalPause();
+        }
+      }
     } catch { /* malformed provider events are ignored */ }
   });
   peer.addEventListener("track", (event) => { if (peer === connection) elements.audio.srcObject = event.streams[0]; });
@@ -224,9 +247,16 @@ elements.interrupt.addEventListener("click", () => controller.technicalPause());
 elements.recordCorrection.addEventListener("click", async () => {
   const value = elements.correction.value.trim();
   if (!controller.addCorrection(value)) return;
+  const eventId = `speech-correction:${crypto.randomUUID()}`;
   await api("/api/actions", { method: "POST", body: JSON.stringify({
-    event_id: `speech-correction:${crypto.randomUUID()}`, execution_version: controller.executionVersion, action: value, kind: "speech",
+    event_id: eventId, execution_version: controller.executionVersion, action: value, kind: "speech",
   }) });
+  sendLive({
+    type: "session.instructions.append",
+    event_id: eventId,
+    delegation_id: null,
+    content: "The doctor corrected the prior statement. Stop relying on it and delegate to the client now for current context.",
+  });
   elements.correction.value = "";
 });
 window.addEventListener("dnh:chart-interaction", ({ detail }) => {
@@ -239,6 +269,7 @@ window.addEventListener("dnh:chart-interaction", ({ detail }) => {
 
 const bootstrap = await api("/api/bootstrap");
 csrf = bootstrap.csrf;
+assessmentWelcome = bootstrap.assessment_welcome;
 elements.detail.textContent = bootstrap.live_available ? "Voice is ready after consent." : "Provider credentials are not configured; the evidence feed remains available.";
 elements.start.disabled = true;
 poll();
