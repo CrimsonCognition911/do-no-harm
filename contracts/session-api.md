@@ -48,7 +48,7 @@ are rejected. IDs below are illustrative, not live credentials.
 | `POST /api/runs` | Operator | `{ "request_id": "create-1", "mode": "coached" }`; `mode` may also be `assessment`. Returns 201 with run snapshot plus separate `tokens.doctor`, `tokens.examiner`, `tokens.execution`, `tokens.audio` and `expires_in_seconds`. |
 | `GET /api/runs/{run_id}` | Any capability belonging to that run | Snapshot: `run_id`, `instance_id`, `environment`, `state`, `execution_version`, `simulation_time_ms`, `assisted`, `review_allowed`. No tokens or hidden findings. |
 | `GET /api/runs/{run_id}/events?after=0` | Any run capability | Snapshot plus `events`, `next_cursor`; up to 200 events. Examiner gets its ledger; all other roles get participant-visible events only. |
-| `GET /api/runs/{run_id}/voice` | Audio | Snapshot plus `updates`: permitted voice packets only. UI observations, findings, hidden rubric and unpublished events are omitted. |
+| `GET /api/runs/{run_id}/voice?after=0` | Audio | Snapshot plus up to 200 permitted voice packets and `next_cursor`. UI observations, findings, hidden rubric and unpublished events are omitted. |
 | `POST /api/runs/{run_id}/actions` | Doctor | `event_id`, `execution_version`, `payload`. Browser source permits only `observed`; speech source permits only `intent`. Returns the server-enveloped event. |
 | `POST /api/runs/{run_id}/findings` | Examiner | `event_id`, `execution_version`, `evidence_ids`, `payload` matching the finding schema. Returns an examiner-only provisional finding. |
 | `POST /api/runs/{run_id}/commands` | Examiner | `request_id`, `execution_version`, `command`: `start`, `pause`, `coach`, `resume`, `end`. Returns a snapshot receipt. |
@@ -84,12 +84,14 @@ bind the frozen rubric and establish sufficient evidence before submitting it.
    visibility and evidence identity. A UI click does **not** establish that an
    order was submitted or a treatment administered. Backend-confirmed actions
    require the future controlled OpenMRS adapter, not a doctor JSON flag.
-5. The voice adapter calls `GET /api/runs/{run_id}/voice` with the **audio**
+5. The voice adapter calls `GET /api/runs/{run_id}/voice?after={cursor}` with the **audio**
    capability. The response `updates` array is the only application payload
    Live may speak. Each item matches [`voice-update.schema.json`](voice-update.schema.json):
    `kind=permitted_voice_update`, `say`, `source_event_id`, run/version/time.
    UI observations are not spoken. Findings, criterion IDs, rationales and
    authored-but-unpublished scenario events never appear in this feed.
+   Persist `next_cursor` with the run and `instance_id`, and supply it as `after`
+   on the next poll or reconnect so already consumed packets are not repeated.
    `project_permitted_voice_update()` is the same function the HTTP route uses.
    This is the application handshake, **not** a GPT-Live session or
    client-delegation provider call. Those remain #4/#5.

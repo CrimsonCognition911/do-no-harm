@@ -18,7 +18,7 @@ Application contract **0.1 is frozen**. Use these files; do not guess field name
 |---|---|
 | Event envelopes | `contracts/events.schema.json` — also `GET /api/contracts/events` |
 | Action → evidence → voice handshake and sample JSON | `contracts/samples/handshake.json` — also `GET /api/contracts/handshake` |
-| What Live may say | `contracts/voice-update.schema.json` — also `GET /api/contracts/voice-update` and `GET /api/runs/{run_id}/voice` (audio capability) |
+| What Live may say | `contracts/voice-update.schema.json` — also `GET /api/contracts/voice-update` and cursor-based `GET /api/runs/{run_id}/voice?after=0` (audio capability) |
 | HTTP routes, tokens, pause acks | `contracts/session-api.md` |
 
 ## What is implemented
