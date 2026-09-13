@@ -1,8 +1,16 @@
-# Doctor experience — @tijoseymathew
+# Doctor voice and action feed
 
-Own the GPT-Live-1 voice interface, doctor action capture, session status and read-only CUA review experience: [#5](https://github.com/CrimsonCognition911/do-no-harm/issues/5), [#7](https://github.com/CrimsonCognition911/do-no-harm/issues/7), [#8](https://github.com/CrimsonCognition911/do-no-harm/issues/8).
+This directory implements the doctor-facing sidecar for the configured OpenMRS
+workspace. It is a small, dependency-free browser client plus a loopback Python
+BFF. OpenMRS remains the chart; this UI provides voice controls, run state and an
+evidence feed.
 
-This folder reserves your work area; no frontend framework or UI is scaffolded yet. Build around the existing OpenMRS chart, not a replacement EMR.
+The implementation follows the official OpenAI documentation for
+[GPT-Live client delegation](https://developers.openai.com/api/docs/guides/live-delegation)
+and [browser WebRTC sessions](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live):
+the browser carries audio and events, while the trusted BFF creates the
+`gpt-live-1` session with `delegation.type = client`. `OPENAI_API_KEY`, run
+capabilities and the examiner bridge credential remain server-side.
 
 Application contract **0.1 is frozen**. Use these files; do not guess field names:
 
@@ -13,10 +21,104 @@ Application contract **0.1 is frozen**. Use these files; do not guess field name
 | What Live may say | `contracts/voice-update.schema.json` — also `GET /api/contracts/voice-update` and cursor-based `GET /api/runs/{run_id}/voice?after=0` (audio capability) |
 | HTTP routes, tokens, pause acks | `contracts/session-api.md` |
 
-1. Pull `dev` and create your own feature branch.
-2. Do not change message shapes without @CrimsonSithria. Browser interactions are observations, not confirmed clinical execution.
-3. Integrate one real voice -> examiner -> voice exchange early. API-backed session creation and credentials stay on the backend; never place keys in browser code.
-4. Speak only `permitted_voice_update` packets. Hidden rubric, findings and unreleased events must never reach the active assessment client or Live.
-5. CUA uses a separate read-only review browser only after pause acknowledgment or during debrief. It does not execute doctor orders, release results or modify the record.
+## What is implemented
 
-Do not infer live provider readiness from the scaffold health endpoint; `/ready` deliberately returns 503.
+- Full-duplex browser WebRTC connection, playback interruption, explicit
+  provider hangup and reconnect.
+- Timestamped input/output transcript fragments plus explicit correction and
+  teach-back entry. Fragments remain context; they do not become confirmed care.
+- Explicit OpenMRS integration events recorded as browser observations, and
+  spoken corrections recorded as intentions.
+- Participant-feed validation against the shared event-contract semantics. Raw
+  findings, examiner visibility and unknown future-event types are dropped.
+- Display acknowledgments for published clinical updates. Browser playback ticks
+  do not identify which announcement played, so spoken receipts are disabled
+  until a verified provider-to-playback correlation adapter exists.
+- Pause-safe playback: the microphone and WebRTC transport close before the BFF submits the
+  run-scoped audio worker acknowledgment. Resume waits for a connected voice
+  session. Disconnect, feed failure and Stop playback request a real server pause
+  using the audio capability. Failed requests retry with the same ID; reconnect
+  alone cannot resume the run. Execution must separately acknowledge quiescence,
+  and the examiner must request resume. If the backend is unreachable, local audio
+  stays off and server pause remains unconfirmed until connectivity returns.
+- Delayed examiner responses are discarded after pause, disconnect, consent
+  revocation or execution-version changes. Current snapshot state gates replay.
+- Explicit recording consent. The client keeps audio/transcript context in
+  memory for this browser session only and clears it on consent revocation or
+  an explicit end.
+
+## Local setup
+
+Start the existing authenticated fixture session API and create/start a
+synthetic run as described in `contracts/session-api.md` (use `--port 8010`
+if port 8000 is occupied). Give the doctor BFF
+only the run ID plus doctor and audio capabilities:
+
+```sh
+export DNH_SESSION_API=http://127.0.0.1:8010
+export DNH_RUN_ID='<assigned synthetic run>'
+export DNH_DOCTOR_CAPABILITY='<doctor capability>'
+export DNH_AUDIO_CAPABILITY='<audio capability>'
+python3 frontend/server.py --port 3000
+```
+
+Open `http://127.0.0.1:3000`. Do not commit or paste capability values. The BFF
+binds only to loopback, checks Host/Origin and CSRF, and maps one process to one
+run. This is not production user authentication.
+
+For an actual voice session, set `OPENAI_API_KEY` only in the BFF environment.
+If it is absent, the UI reports provider unavailability while the evidence feed
+continues to work. Provider access has not been proven by fixture tests.
+
+The dependency-owned examiner bridge is optional until its service is ready:
+
+```sh
+export DNH_EXAMINER_BRIDGE_URL='https://configured-bridge.example/requests'
+export DNH_EXAMINER_BRIDGE_TOKEN='<run-scoped bridge credential>'
+```
+
+Both values are required together. A delegation request contains its opaque
+delegation ID, run/version, bounded participant transcript context, and evidence
+IDs taken from the BFF's authorized feed. The response must be:
+
+```json
+{
+  "status": "complete",
+  "spoken_update": "Participant-safe verified result.",
+  "evidence_ids": ["participant-visible-event-id"]
+}
+```
+
+Only those three fields cross back to Live. Evidence references outside the
+authorized participant feed fail closed. Display acknowledgments use the same
+endpoint with `type: delivery_ack`, and are accepted only for a publication the
+BFF observed.
+
+## OpenMRS interaction hook
+
+An OpenMRS extension running in the same page can report an explicit chart
+interaction without claiming clinical execution:
+
+```js
+window.dispatchEvent(new CustomEvent("dnh:chart-interaction", {
+  detail: { action: "opened laboratory results" },
+}));
+```
+
+Do not dispatch this for generic clicks. The controlled OpenMRS backend must
+publish a separate `doctor_action` with `phase: confirmed`, its resource
+reference and evidence attribution before the feed labels anything confirmed.
+
+## Tests and remaining integration gate
+
+```sh
+python3 -m unittest discover -s tests -v
+npm run test:green
+npm run test:red
+```
+
+The tests are explicitly fixture/mock tests and make no OpenAI, examiner or
+OpenMRS provider calls. Completing the real voice → examiner → voice proof still
+depends on the examiner bridge and a provider-enabled environment; keep the
+GitHub issue open until that evidence and the corresponding authoritative
+delivery receipts exist.

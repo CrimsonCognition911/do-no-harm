@@ -1,0 +1,58 @@
+:root {
+  color-scheme: dark;
+  --ink: #f4f1e8;
+  --muted: #aaa99f;
+  --line: #33352f;
+  --surface: #171915;
+  --raised: #20231e;
+  --green: #b9f18c;
+  --amber: #f3c969;
+  --red: #ff8f86;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #0d0f0c; color: var(--ink); }
+.topbar { min-height: 92px; display: flex; align-items: center; justify-content: space-between; padding: 20px clamp(22px, 5vw, 72px); border-bottom: 1px solid var(--line); }
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: 0; font-size: clamp(1.45rem, 3vw, 2.1rem); letter-spacing: -0.04em; }
+h2 { margin-bottom: 10px; font-size: 1.1rem; }
+.eyebrow { margin-bottom: 5px; color: var(--green); font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.status { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: .9rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 5px #f3c9691c; }
+main { width: min(1180px, calc(100% - 36px)); margin: 34px auto 70px; }
+.voice-card { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 20px 40px; padding: clamp(24px, 4vw, 44px); border: 1px solid #3c4336; border-radius: 22px; background: radial-gradient(circle at 82% 50%, #32452b 0, #20291d 20%, var(--surface) 58%); }
+.voice-card p:not(.eyebrow) { color: var(--muted); margin-bottom: 0; max-width: 620px; }
+.voice-orb { grid-row: span 2; display: flex; gap: 5px; align-items: center; justify-content: center; width: 112px; height: 112px; border-radius: 50%; border: 1px solid #637a51; background: #b9f18c12; }
+.voice-orb span { width: 5px; height: 26px; border-radius: 8px; background: var(--green); }
+.voice-orb span:nth-child(2) { height: 45px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; }
+button { border: 1px solid #4d5149; border-radius: 10px; padding: 10px 15px; background: #292c27; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #858b7d; }
+button:disabled { opacity: .42; cursor: not-allowed; }
+button.primary { color: #12200d; background: var(--green); border-color: var(--green); }
+.consent { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+.workspace { display: grid; grid-template-columns: minmax(270px, .72fr) minmax(390px, 1.28fr); gap: 18px; margin-top: 18px; }
+.panel { min-height: 310px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.chart-note > p:not(.eyebrow) { color: var(--muted); line-height: 1.6; }
+.correction { margin-top: 34px; }
+.correction label { display: block; margin-bottom: 9px; font-size: .82rem; font-weight: 750; }
+.correction div { display: flex; gap: 8px; }
+input[type="text"], input:not([type]) { width: 100%; min-width: 0; border: 1px solid #44483f; border-radius: 9px; padding: 11px 12px; background: #10120f; color: var(--ink); font: inherit; }
+.panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.badge { padding: 5px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: .72rem; }
+.feed { list-style: none; margin: 18px 0 0; padding: 0; }
+.feed li { display: grid; grid-template-columns: 9px 1fr auto; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.feed li::before { content: ""; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--amber); }
+.feed li.confirmed::before, .feed li.update::before { background: var(--green); }
+.feed strong { display: block; font-size: .9rem; }
+.feed small, .empty { color: var(--muted); font-size: .76rem; }
+.empty { margin-top: 35px; text-align: center; }
+.technical_pause .dot, .failed .dot { background: var(--red); box-shadow: 0 0 0 5px #ff8f861c; }
+.running .dot, .connected .dot { background: var(--green); box-shadow: 0 0 0 5px #b9f18c1c; }
+
+@media (max-width: 760px) {
+  .workspace { grid-template-columns: 1fr; }
+  .voice-card { grid-template-columns: 1fr; }
+  .voice-orb { grid-row: auto; width: 80px; height: 80px; }
+}

@@ -185,3 +185,19 @@ remain #4/#5. #3 still needs its release checks and runtime compilation; #6
 needs verified OpenMRS publication, durable evidence and operational failure
 handling. `contracts/adaptive-fixture.json` stays an examiner-side engineering
 fixture and is not served to clients.
+
+## Audio fault pause
+
+`POST /api/runs/{run_id}/technical-pause` accepts only the run-scoped audio
+capability and `{"request_id":"audio-fault:<unique-id>"}`. The server reads the
+current version under its lock; stale browser polling cannot block a fault pause.
+A running run freezes time and moves to `pause_requested`; an in-flight resume is
+invalidated with a new version. Already quiet runs remain quiet. Created runs
+return 409 without caching the request, allowing retry after start.
+
+Retries of the same request return the original receipt, including after a later
+resume. No examiner commands, clinical writes, scoring changes or execution-worker
+acknowledgments are granted to the audio identity. Audio must close its transport
+before acknowledging pause; execution must separately drain its work. Only the
+existing examiner resume command followed by both worker acknowledgments restarts
+time. The BFF exposes this as `/api/technical-pause`, guarded by Origin and CSRF.
